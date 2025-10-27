@@ -69,12 +69,12 @@ public static function infolist(Infolists\Infolist $infolist): Infolists\Infolis
                 // We dynamically generate the QR code here
                 ->default(function ($record) {
                     // $record is the current Member model
-                    $qrCode = QrCode::format('png')
+                    $qrCode = QrCode::format('svg')
                                     ->size(250)
                                     ->generate($record->unique_id);
 
                     // Return the QR code as a Base64 encoded string
-                    return 'data:image/png;base64,' . base64_encode($qrCode);
+                    return 'data:image/svg+xml;base64,' . base64_encode($qrCode);
                 }),
         ]);
 }
