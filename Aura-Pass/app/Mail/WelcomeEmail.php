@@ -51,16 +51,15 @@ class WelcomeEmail extends Mailable implements ShouldQueue // Implement here
      */
     public function attachments(): array
     {
-        // Generate the SVG as an HtmlString object
-        $qrCode = QrCode::format('svg')
+        // Generate the PNG as a raw binary string
+        $qrCode = (string) QrCode::format('png')
                         ->size(400)
-                        ->generate($this->member->unique_id);
+                        ->generate($this->member->unique_id); 
 
-        // 1. Cast the HtmlString object to a plain string
-        // 2. Attach the plain string data as an .svg file
+        // Attach the binary string data as a .png file
         return [
-            Attachment::fromData(fn () => (string) $qrCode, 'Your-QR-Code.svg')
-                ->withMime('image/svg+xml'),
+            Attachment::fromData(fn () => $qrCode, 'Your-QR-Code.png')
+                ->withMime('image/png'),
         ];
     }
 }
