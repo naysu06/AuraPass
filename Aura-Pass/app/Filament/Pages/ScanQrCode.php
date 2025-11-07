@@ -6,6 +6,7 @@ use App\Models\CheckIn;
 use App\Models\Member; // 1. Import your Member model
 use Filament\Notifications\Notification; // 2. Import Notifications
 use Filament\Pages\Page;
+use App\Events\MemberScanned;
 
 class ScanQrCode extends Page
 {
@@ -24,34 +25,20 @@ public function processScan($qrData)
 
         if (!$member) {
             // 2. FAILURE: Member not found
-            Notification::make()
-                ->title('Scan Error')
-                ->body('Invalid or unknown QR Code.')
-                ->danger()
-                ->send();
+            MemberScanned::dispatch(null, 'not_found');
             return; // Stop here
         }
 
-        // 3. NEW CHECK: Verify membership is active
-        // We can do this check now because we cast the date in the model
+        // 3. CHECK: Verify membership
         if ($member->membership_expiry_date->isPast()) {
-            
+
             // 4. REJECT: Membership is expired
-            Notification::make()
-                ->title('Check-in Failed')
-                ->body('Membership for ' . $member->name . ' expired on ' . $member->membership_expiry_date->format('M d, Y') . '.')
-                ->danger()
-                ->send();
+            MemberScanned::dispatch($member, 'expired');
             return; // Stop here
         }
 
-        // 5. SUCCESS: Create the check-in (only if they passed)
+        // 5. SUCCESS: Create the check-in
         $member->checkIns()->create();
-
-        Notification::make()
-            ->title('Check-in Successful!')
-            ->body('Welcome, ' . $member->name)
-            ->success()
-            ->send();
+        MemberScanned::dispatch($member, 'active');
     }
 }
