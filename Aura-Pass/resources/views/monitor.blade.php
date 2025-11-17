@@ -113,8 +113,8 @@
         
         <div id="status-panel" class="bg-default">
             <div id="message" class="show"> 
-                <h1 id="status-text">WAITING FOR SCAN</h1>
-                <p id="name-text">Please scan your QR code.</p>
+                <h1 id="status-text">WELCOME TO FURUKAWA GYM</h1>
+                <p id="name-text">Please scan your provided QR code.</p>
                 
                 <div style="width:100%; margin-top: 10px;">
                     <p id="date-text"></p>
@@ -145,7 +145,8 @@
         const messageBox = document.getElementById('message');
         const statusText = document.getElementById('status-text');
         const nameText = document.getElementById('name-text');
-        const dateText = document.getElementById('date-text'); // <-- NEW SELECTOR
+        const dateText = document.getElementById('date-text');
+        nameText.style.whiteSpace = 'pre-line'; // CSS style to make the newline character visible
         
         const videoElem = document.getElementById('qr-video');
         const cameraSelect = document.getElementById('camera-select');
@@ -190,7 +191,7 @@
                 } 
                 else if (e.status === 'expired') {
                     statusPanel.classList.add('bg-red');
-                    statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED PLEASE RENEW YOUR MEMBERSHIP AT THE FRONT DESK OR AVAIL OUR WALK IN';
+                    statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED,\nPLEASE RENEW YOUR MEMBERSHIP AT THE FRONT DESK OR AVAIL OUR WALK IN';
                     nameText.textContent = e.member.name;
 
                     // SHOW EXPIRED DATE
@@ -200,7 +201,7 @@
                 else if (e.status === 'not_found') {
                     statusPanel.classList.add('bg-red');
                     statusText.textContent = 'INVALID CODE';
-                    nameText.textContent = 'Member not found.';
+                    nameText.textContent = 'MEMBER NOT FOUND.\nIF YOU THINK THIS IS A MISTAKE PLEASE HEAD TO THE FRONT DESK';
                     dateText.textContent = ''; // No date for invalid users
                 }
 
