@@ -137,108 +137,105 @@
     <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.11.2/dist/echo.iife.js"></script>
     <script type="module">
-        // Import the scanner
         import QrScanner from 'https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js';
 
-        // --- PART A: ELEMENT SELECTORS ---
+        // --- ELEMENTS ---
         const statusPanel = document.getElementById('status-panel');
         const messageBox = document.getElementById('message');
         const statusText = document.getElementById('status-text');
         const nameText = document.getElementById('name-text');
         const dateText = document.getElementById('date-text');
-        nameText.style.whiteSpace = 'pre-line'; // CSS style to make the newline character visible
         
         const videoElem = document.getElementById('qr-video');
         const cameraSelect = document.getElementById('camera-select');
+        
         let qrScanner;
+        
+        // --- THE MAGIC FLAG ---
+        // This prevents the scanner from spamming the API while the user
+        // is holding their phone in front of the camera.
+        let isOnCooldown = false; 
 
-        // --- Helper function to format date ---
-        function formatDate(dateString) {
-            if (!dateString) return '';
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-        }
-
-        // --- PART B: ECHO (LISTENER) SETUP ---
+        // --- ECHO LISTENER ---
         window.Echo = new Echo({
             broadcaster: 'pusher',
-            key: '{{ env("PUSHER_APP_KEY") }}',
-            cluster: '{{ env("PUSHER_APP_CLUSTER") }}',
+            // CHANGE THIS: Use config() instead of env()
+            key: '{{ config("broadcasting.connections.pusher.key") }}',
+            cluster: '{{ config("broadcasting.connections.pusher.options.cluster") }}',
             forceTLS: true
         });
 
-        // This function will be called when a broadcast is received
         window.Echo.channel('monitor-screen')
             .listen('.member.scanned', (e) => {
-                
-                // 1. Update text and show the message
-                statusPanel.className = ''; // Clear old colors
-                messageBox.classList.remove('show');
-                dateText.classList.remove('visible'); // Hide date initially
-                
-                if (e.status === 'active') {
-                    statusPanel.classList.add('bg-green');
-                    statusText.textContent = 'WELCOME!';
-                    nameText.textContent = e.member.name;
-                    
-                    // SHOW VALID UNTIL DATE
-                    dateText.textContent = 'Membership Valid Until: ' + formatDate(e.member.membership_expiry_date);
-                    dateText.classList.add('visible');
-                } 
-                else if (e.status === 'expired') {
-                    statusPanel.classList.add('bg-red');
-                    statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED,\nPLEASE RENEW YOUR MEMBERSHIP AT THE FRONT DESK OR AVAIL OUR WALK IN';
-                    nameText.textContent = e.member.name;
-
-                    // SHOW EXPIRED DATE
-                    dateText.textContent = 'Expired on: ' + formatDate(e.member.membership_expiry_date);
-                    dateText.classList.add('visible');
-                } 
-                else if (e.status === 'not_found') {
-                    statusPanel.classList.add('bg-red');
-                    statusText.textContent = 'INVALID CODE';
-                    nameText.textContent = 'MEMBER NOT FOUND.\nIF YOU THINK THIS IS A MISTAKE PLEASE HEAD TO THE FRONT DESK';
-                    dateText.textContent = ''; // No date for invalid users
-                }
-
-                // Force browser to repaint, then fade in
-                void messageBox.offsetWidth; 
-                messageBox.classList.add('show');
-                
-                // 2. After 5 seconds, reset the screen
-                setTimeout(() => {
-                    // Fade out
-                    messageBox.classList.remove('show');
-                    
-                    // After fade out, reset text and color
-                    setTimeout(() => { 
-                        statusPanel.className = 'bg-default';
-                        statusText.textContent = 'WAITING FOR SCAN';
-                        nameText.textContent = 'Please scan your QR code.';
-                        dateText.textContent = '';
-                        dateText.classList.remove('visible');
-                        messageBox.classList.add('show');
-                    }, 500); // 0.5s for fade-out
-                    
-                    // 3. Re-start the scanner
-                    startScanner(cameraSelect.value); 
-                }, 5000); // 5-second display
+                updateStatusUI(e.status, e.member);
             });
-        
-        // --- PART C: QR SCANNER SETUP ---
 
-        // This function is called when a QR code is successfully scanned
-        const onScanSuccess = (result) => {
-            if (qrScanner) {
-                qrScanner.destroy(); // Stop scanning
-                qrScanner = null;
+        // --- UI UPDATER ---
+        function updateStatusUI(status, member) {
+            // Reset UI classes
+            statusPanel.className = ''; 
+            messageBox.classList.remove('show');
+            dateText.classList.remove('visible');
+
+            // Apply colors and text based on status
+            if (status === 'active') {
+                statusPanel.classList.add('bg-green');
+                statusText.textContent = 'WELCOME!';
+                nameText.textContent = member.name;
+                dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
+                dateText.classList.add('visible');
+            } 
+            else if (status === 'expired') {
+                statusPanel.classList.add('bg-red');
+                statusText.textContent = 'EXPIRED';
+                nameText.textContent = member.name;
+                dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
+                dateText.classList.add('visible');
+            } 
+            else if (status === 'not_found') {
+                statusPanel.classList.add('bg-red');
+                statusText.textContent = 'INVALID';
+                nameText.textContent = 'Member not found.';
+                dateText.textContent = '';
             }
-            
-            // Send the data to our API
+
+            // Animation trigger
+            void messageBox.offsetWidth; 
+            messageBox.classList.add('show');
+
+            // --- RESET TIMER ---
+            // After 3 seconds, reset the screen to "Ready"
+            // AND unlock the scanner (turn off cooldown)
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                
+                setTimeout(() => { 
+                    statusPanel.className = 'bg-default';
+                    statusText.textContent = 'WELCOME TO FURUKAWA GYM';
+                    nameText.textContent = 'Please scan your provided QR code.';
+                    dateText.textContent = '';
+                    dateText.classList.remove('visible');
+                    messageBox.classList.add('show');
+                    
+                    // CRITICAL: Allow scanning again
+                    isOnCooldown = false;
+                    
+                }, 500);
+            }, 3000);
+        }
+
+        // --- QR SCANNER LOGIC ---
+
+        const onScanSuccess = (result) => {
+            // 1. If we are currently showing a result, IGNORE this scan.
+            if (isOnCooldown) {
+                return;
+            }
+
+            // 2. Lock the scanner immediately
+            isOnCooldown = true;
+
+            // 3. Send data to API
             fetch('/api/scan', {
                 method: 'POST',
                 headers: {
@@ -247,86 +244,67 @@
                 },
                 body: JSON.stringify({ qrData: result.data })
             })
-            .catch(async (error) => {
-                console.error('Error submitting scan:', error);
-                // If fetch fails, restart the scanner so it's not stuck
-                await startScanner(cameraSelect.value);
+            .catch(error => {
+                console.error('Error:', error);
+                // If error, unlock immediately so they can try again
+                isOnCooldown = false; 
             });
         };
 
-        // This function populates the camera dropdown
         function setupCameraDropdown(activeDeviceId) { 
-            QrScanner.listCameras(true)
-                .then(cameras => {
-                    cameraSelect.innerHTML = ''; 
-                    
-                    cameras.forEach(camera => {
-                        const option = document.createElement('option');
-                        option.value = camera.id;
-                        option.innerHTML = camera.label;
-                        cameraSelect.appendChild(option);
-                    });
-
-                    if (activeDeviceId) {
-                        cameraSelect.value = activeDeviceId;
-                    } 
-                    else if (qrScanner) {
-                        cameraSelect.value = qrScanner.getCamera();
-                    }
-                })
-                .catch(err => console.error(err));
+            QrScanner.listCameras(true).then(cameras => {
+                cameraSelect.innerHTML = ''; 
+                cameras.forEach(camera => {
+                    const option = document.createElement('option');
+                    option.value = camera.id;
+                    option.innerHTML = camera.label;
+                    cameraSelect.appendChild(option);
+                });
+                if (activeDeviceId) cameraSelect.value = activeDeviceId;
+            });
         }
 
-        // This function starts the scanner
-        function startScanner(deviceId) {
-            
-            // 1. Destroy any existing scanner
+        async function startScanner(deviceId) {
             if (qrScanner) {
+                await qrScanner.stop();
                 qrScanner.destroy();
                 qrScanner = null;
             }
-            
-            // 2. Wait for the browser to "breathe"
-            setTimeout(() => {
-                
-                // 3. Tell the browser to run this code just before its next paint.
-                requestAnimationFrame(() => {
-                    
-                    // 4. Create and start the new scanner
-                    qrScanner = new QrScanner(
-                        videoElem,
-                        onScanSuccess,
-                        {
-                            preferredCamera: deviceId || 'environment',
-                            highlightScanRegion: true,
-                            highlightCodeOutline: true,
-                        }
-                    );
 
-                    qrScanner.start()
-                        .then(() => {
-                            // 5. Populate the dropdown *after* the camera starts
-                            setupCameraDropdown(deviceId);
-                        })
-                        .catch(err => console.error(err));
+            // Small pause to help browser rendering
+            setTimeout(() => {
+                qrScanner = new QrScanner(
+                    videoElem,
+                    onScanSuccess,
+                    {
+                        preferredCamera: deviceId || 'environment',
+                        highlightScanRegion: true,
+                        highlightCodeOutline: true,
+                        // Scan aggressively (every frame) because we handle the throttle manually
+                        maxScansPerSecond: 25, 
+                    }
+                );
+
+                qrScanner.start().then(() => {
+                    setupCameraDropdown(deviceId);
                 });
-            }, 50); 
+            }, 50);
         }
 
-        // --- Main execution ---
-        document.addEventListener('DOMContentLoaded', () => {
-            startScanner(); // Start with the default camera
+        // Helper for date formatting
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
 
-            cameraSelect.addEventListener('change', () => {
-                startScanner(cameraSelect.value);
-            });
+        // --- EXECUTION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            startScanner(); 
+            cameraSelect.addEventListener('change', () => startScanner(cameraSelect.value));
         });
 
-        // Make sure to stop everything when the user leaves the page
         window.addEventListener('beforeunload', () => {
-            if (qrScanner) {
-                qrScanner.destroy();
-            }
+            if (qrScanner) qrScanner.destroy();
         });
     </script>
 </body>
