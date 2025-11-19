@@ -24,47 +24,80 @@ class PeakHoursChart extends ChartWidget
         ];
     }
 
-    protected function getData(): array
+   protected function getData(): array
     {
-        // 2. Get the active filter value. 
-        // If it's null (on first load), default to '7'.
         $activeFilter = $this->filter ?? '7';
-
-        // Convert to an integer for the query
         $daysToLookBack = (int) $activeFilter;
 
-        // 3. Query the data based on the filter
-        $data = CheckIn::select(DB::raw('HOUR(created_at) as hour'), DB::raw('count(*) as count'))
-            ->where('created_at', '>=', now()->subDays($daysToLookBack))
-            ->groupBy('hour')
-            ->pluck('count', 'hour')
-            ->toArray();
+        // 1. Get all raw records from the database
+        // We don't group by SQL anymore to avoid the CONVERT_TZ issue.
+        $records = CheckIn::where('created_at', '>=', now()->subDays($daysToLookBack))
+            ->get();
 
-        // 4. Fill in all 24 hours (0-23)
-        $hours = [];
-        $counts = [];
-        
-        for ($i = 0; $i < 24; $i++) {
-            // Format label: "8 AM", "2 PM"
-            $hours[] = date('g A', mktime($i, 0, 0, 1, 1));
+        // 2. Create an empty bucket for 24 hours (0 to 23)
+        $hours = array_fill(0, 24, 0);
+
+        // 3. Loop through records and sort them into hour buckets
+        foreach ($records as $record) {
+            // This converts the UTC database time to your local time automatically
+            // assuming your config/app.php timezone is set to 'Asia/Manila'
+            // If not, use: $record->created_at->setTimezone('Asia/Manila')->hour
+            $hour = $record->created_at->setTimezone('Asia/Manila')->hour;
             
-            // Get count or 0 if no data
-            $counts[] = $data[$i] ?? 0;
+            $hours[$hour]++;
+        }
+
+        // 4. Prepare the chart data
+        $averages = [];
+        foreach ($hours as $totalCount) {
+            // FIX FOR ROUNDING TRAP:
+            // If we have data (totalCount > 0), we use ceil() to ensure we show at least 1.
+            // Otherwise, 1 check-in divided by 7 days would be 0.
+            if ($totalCount > 0) {
+                // Example: 1 check-in / 7 days = 0.14 -> Becomes 1
+                $averages[] = ceil($totalCount / $daysToLookBack); 
+            } else {
+                $averages[] = 0;
+            }
+        }
+        
+        // 5. Generate Labels (12 AM - 11 PM)
+        $labels = [];
+        for ($i = 0; $i < 24; $i++) {
+            $labels[] = date('g A', mktime($i, 0, 0, 1, 1));
         }
 
         return [
             'datasets' => [
                 [
-                    'label' => 'Peak Hours',
-                    'data' => $counts,
-                    // Single, solid color (Filament Primary Blue-ish)
+                    'label' => 'Avg. Crowd Size',
+                    'data' => $averages,
                     'backgroundColor' => '#3B82F6', 
-                    'borderColor' => '#2563EB',
-                    'borderWidth' => 1,
                     'borderRadius' => 4,
                 ],
             ],
-            'labels' => $hours,
+            'labels' => $labels,
+        ];
+    }
+
+    protected function getOptions(): array
+    {
+        return [
+            'scales' => [
+                'y' => [
+                    'grid' => [
+                        'display' => false, // Hides horizontal grid lines
+                    ],
+                    'ticks' => [
+                        'stepSize' => 5, // Integers only, no decimals for people
+                    ],
+                ],
+                'x' => [
+                    'grid' => [
+                        'display' => false, // Hides vertical grid lines
+                    ],
+                ],
+            ],
         ];
     }
 

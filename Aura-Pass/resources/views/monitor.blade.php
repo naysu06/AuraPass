@@ -113,7 +113,7 @@
         
         <div id="status-panel" class="bg-default">
             <div id="message" class="show"> 
-                <h1 id="status-text">WELCOME TO FURUKAWA GYM</h1>
+                <h1 id="status-text">WELCOME TO QUADS-FURUKAWA GYM</h1>
                 <p id="name-text">Please scan your provided QR code.</p>
                 
                 <div style="width:100%; margin-top: 10px;">
@@ -187,7 +187,7 @@
             } 
             else if (status === 'expired') {
                 statusPanel.classList.add('bg-red');
-                statusText.textContent = 'EXPIRED';
+                statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED';
                 nameText.textContent = member.name;
                 dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
                 dateText.classList.add('visible');
@@ -211,7 +211,7 @@
                 
                 setTimeout(() => { 
                     statusPanel.className = 'bg-default';
-                    statusText.textContent = 'WELCOME TO FURUKAWA GYM';
+                    statusText.textContent = 'WELCOME TO QUADS-FURUKAWA GYM';
                     nameText.textContent = 'Please scan your provided QR code.';
                     dateText.textContent = '';
                     dateText.classList.remove('visible');
