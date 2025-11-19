@@ -24,46 +24,39 @@ class PeakHoursChart extends ChartWidget
         ];
     }
 
-   protected function getData(): array
+    protected function getData(): array
     {
         $activeFilter = $this->filter ?? '7';
         $daysToLookBack = (int) $activeFilter;
 
-        // 1. Get all raw records from the database
-        // We don't group by SQL anymore to avoid the CONVERT_TZ issue.
-        $records = CheckIn::where('created_at', '>=', now()->subDays($daysToLookBack))
-            ->get();
+        // 1. Get all raw records (No changes here)
+        $records = CheckIn::where('created_at', '>=', now()->subDays($daysToLookBack))->get();
 
-        // 2. Create an empty bucket for 24 hours (0 to 23)
+        // 2. Fill buckets for 0-23 (Keep this as is, it's easier for mapping)
         $hours = array_fill(0, 24, 0);
 
-        // 3. Loop through records and sort them into hour buckets
+        // 3. Sort into buckets (No changes here)
         foreach ($records as $record) {
-            // This converts the UTC database time to your local time automatically
-            // assuming your config/app.php timezone is set to 'Asia/Manila'
-            // If not, use: $record->created_at->setTimezone('Asia/Manila')->hour
             $hour = $record->created_at->setTimezone('Asia/Manila')->hour;
-            
             $hours[$hour]++;
         }
 
-        // 4. Prepare the chart data
+        // 4. PREPARE DISPLAY DATA
         $averages = [];
-        foreach ($hours as $totalCount) {
-            // FIX FOR ROUNDING TRAP:
-            // If we have data (totalCount > 0), we use ceil() to ensure we show at least 1.
-            // Otherwise, 1 check-in divided by 7 days would be 0.
+        $labels = [];
+
+        // <--- CHANGED: Loop from 6 (6 AM) to 21 (9 PM) only --->
+        for ($i = 6; $i <= 21; $i++) {
+            $totalCount = $hours[$i];
+
+            // Average Logic
             if ($totalCount > 0) {
-                // Example: 1 check-in / 7 days = 0.14 -> Becomes 1
                 $averages[] = ceil($totalCount / $daysToLookBack); 
             } else {
                 $averages[] = 0;
             }
-        }
-        
-        // 5. Generate Labels (12 AM - 11 PM)
-        $labels = [];
-        for ($i = 0; $i < 24; $i++) {
+
+            // Labels
             $labels[] = date('g A', mktime($i, 0, 0, 1, 1));
         }
 

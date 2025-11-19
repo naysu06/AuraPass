@@ -9,7 +9,17 @@ return new class extends Migration {
     public function up(): void {
         Schema::create('check_ins', function (Blueprint $table) {
             $table->id();
+            
+            // Your relation to the Member
             $table->foreignId('member_id')->constrained()->onDelete('cascade');
+            
+            // NEW: The time they left. 
+            // Nullable because when they first scan, they haven't left yet.
+            $table->timestamp('check_out_at')->nullable();
+            
+            // Standard timestamps:
+            // 'created_at' = The exact time they Checked IN.
+            // 'updated_at' = The last time this record was touched.
             $table->timestamps();
         });
     }
