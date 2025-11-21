@@ -17,6 +17,13 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+//IMPORT YOUR CUSTOM WIDGETS HERE
+use App\Filament\Widgets\RecentAccessLog; 
+use App\Filament\Widgets\ExpiringMembers;
+use App\Filament\Widgets\StatsOverview;
+use App\Filament\Widgets\PeakHoursChart;
+use App\Filament\Widgets\DailyVisitsChart;
+use App\Filament\Widgets\LatestCheckIns;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -39,6 +46,17 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 Widgets\AccountWidget::class,
+                RecentAccessLog::class, // <--- Uses the imported class above
+
+                // Row 2: The Stats Row
+                StatsOverview::class,
+
+                // Row 3: Charts
+                PeakHoursChart::class,
+                DailyVisitsChart::class,
+
+                // Row 4: Task List
+                ExpiringMembers::class,
                 //Widgets\FilamentInfoWidget::class, // Disabled to reduce dashboard clutter
             ])
             ->middleware([
