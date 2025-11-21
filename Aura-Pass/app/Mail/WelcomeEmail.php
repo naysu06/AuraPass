@@ -54,7 +54,10 @@ class WelcomeEmail extends Mailable implements ShouldQueue // Implement here
         // Generate the PNG as a raw binary string
         $qrCode = (string) QrCode::format('png')
                         ->size(400)
-                        ->generate($this->member->unique_id); 
+                        ->backgroundColor(255, 255, 255) // White background
+                        ->color(0, 0, 0) // Black foreground (optional, but explicit)
+                        ->margin(2) // Add margin for better scanning
+                        ->generate($this->member->unique_id);
 
         // Attach the binary string data as a .png file
         return [

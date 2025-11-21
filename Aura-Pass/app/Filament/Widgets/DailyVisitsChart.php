@@ -9,7 +9,7 @@ use Illuminate\Support\Carbon;
 class DailyVisitsChart extends ChartWidget
 {
     protected static ?string $heading = 'Daily Visits Comparison';
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 2;
 
     protected function getFilters(): ?array
     {
