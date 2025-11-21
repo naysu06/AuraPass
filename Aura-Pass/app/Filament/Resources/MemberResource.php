@@ -50,25 +50,6 @@ class MemberResource extends Resource
                 
                 // 2. VIEW
                 Tables\Actions\ViewAction::make(),
-
-                // 3. FORCE CHECK-IN/OUT (The New Action)
-                Tables\Actions\Action::make('force_scan')
-                    ->label('Force Scan')
-                    ->icon('heroicon-o-qr-code') // Looks like a scan
-                    ->color('warning') // Yellow to indicate "Staff Override"
-                    ->requiresConfirmation()
-                    ->modalHeading('Manual Check-In / Check-Out')
-                    ->modalDescription('This will simulate a QR scan for this member. The standard rules (Debounce, 12-hour limit, Timezone fix) will apply exactly as if they used the kiosk.')
-                    ->action(function (Member $record) {
-                        // Dispatch the exact same job the Kiosk uses
-                        ProcessQrScan::dispatch($record->unique_id);
-
-                        Notification::make()
-                            ->title('Scan Sent to Queue')
-                            ->body("Processing check-in/out for {$record->name}...")
-                            ->success()
-                            ->send();
-                    }),
             ]);
     }
 

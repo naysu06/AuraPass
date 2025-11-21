@@ -2,15 +2,16 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\CheckInResource\Pages;
+use App\Filament\Resources\AccessLogResource\Pages;
 use App\Models\CheckIn;
+use App\Jobs\ProcessQrScan;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 
-class CheckInResource extends Resource
+class AccessLogResource extends Resource
 {
-    // Link to the model your Job is populating
     protected static ?string $model = CheckIn::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-clock';
@@ -37,10 +38,10 @@ class CheckInResource extends Resource
                 Tables\Columns\TextColumn::make('check_out_at')
                     ->label('Checked Out')
                     ->dateTime('h:i A')
-                    ->placeholder('Active Session') // Show this if NULL
+                    ->placeholder('Active Session')
                     ->sortable(),
 
-                // 4. Duration Calculation (Optional but useful)
+                // 4. Duration Calculation
                 Tables\Columns\TextColumn::make('duration')
                     ->label('Duration')
                     ->getStateUsing(fn (CheckIn $record) => 
@@ -49,7 +50,7 @@ class CheckInResource extends Resource
                             : '-'
                     ),
             ])
-            ->defaultSort('created_at', 'desc') // Show newest first
+            ->defaultSort('created_at', 'desc')
             ->filters([
                 // Filter to see who is currently in the gym
                 Tables\Filters\Filter::make('active')
@@ -57,7 +58,29 @@ class CheckInResource extends Resource
                     ->query(fn ($query) => $query->whereNull('check_out_at')),
             ])
             ->actions([
-                // Optional: Allow admin to manually delete a bad log
+                // 1. Force Scan - Manual Check-In/Out
+                Tables\Actions\Action::make('force_scan')
+                    ->label('Force Check-Out') // Label clarification
+                    ->icon('heroicon-o-arrow-right-start-on-rectangle')
+                    ->color('warning')
+                    // <--- 1. ONLY SHOW FOR ACTIVE SESSIONS (Check Out is Null)
+                    ->visible(fn (CheckIn $record) => $record->check_out_at === null)
+                    ->requiresConfirmation()
+                    ->modalHeading('Force Check-Out')
+                    ->modalDescription(fn (CheckIn $record) => 
+                        "This will forcefully check out {$record->member->name}. Debounce protection will be bypassed."
+                    )
+                    ->action(function (CheckIn $record) {
+                        // <--- 2. PASS 'TRUE' TO FORCE THE JOB
+                        ProcessQrScan::dispatchSync($record->member->unique_id, true);
+
+                        Notification::make()
+                            ->title('Force Check-Out Queued')
+                            ->body("Processing for {$record->member->name}...")
+                            ->success()
+                            ->send();
+                    }),
+                
                 Tables\Actions\DeleteAction::make(),
             ]);
     }
@@ -65,11 +88,12 @@ class CheckInResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListCheckIns::route('/'),
+            'index' => Pages\ListAccessLog::route('/'),
+            'create' => Pages\CreateAccessLog::route('/create'),
+            'edit' => Pages\EditAccessLog::route('/{record}/edit'),
         ];
     }
     
-    // Hide the "Create" button since your Job/Scanner handles creation
     public static function canCreate(): bool
     {
         return false;

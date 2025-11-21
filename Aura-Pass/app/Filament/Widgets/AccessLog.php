@@ -7,12 +7,11 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 
-class RecentAccessLog extends BaseWidget
+class AccessLog extends BaseWidget
 {
-    // Position it next to the Welcome Widget
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 0;
     
-    protected static ?string $heading = 'Live Access Feed';
+    protected static ?string $heading = 'Live Log Feed';
 
     // Force it to be compact if your layout allows
     protected int | string | array $columnSpan = '1';
@@ -22,8 +21,8 @@ class RecentAccessLog extends BaseWidget
         return $table
             ->poll(2) // Refresh every 2 seconds
             ->query(
-                // Show last 5 events
-                CheckIn::query()->latest()->limit(5)
+                // Show last 3 events
+                CheckIn::query()->latest()->limit(3)
             )
             ->columns([
                 // 1. Member Name
@@ -57,7 +56,7 @@ class RecentAccessLog extends BaseWidget
                 Tables\Actions\Action::make('history')
                     ->label('Full History')
                     ->icon('heroicon-m-chevron-right')
-                    ->url(route('filament.admin.resources.check-ins.index'))
+                    ->url(route('filament.admin.resources.access-logs.index'))
                     ->link()
                     ->size('xs'),
             ]);

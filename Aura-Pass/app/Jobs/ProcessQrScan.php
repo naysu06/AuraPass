@@ -19,12 +19,13 @@ class ProcessQrScan implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $qrData;
+    public $force;
 
-    public function __construct(string $qrData)
+    public function __construct(string $qrData, bool $force = false)
     {
         $this->qrData = $qrData;
+        $this->force = $force;
     }
-
     public function handle(): void
     {
         $member = Member::where('unique_id', $this->qrData)->first();
@@ -84,10 +85,9 @@ class ProcessQrScan implements ShouldQueue
         if ($activeSession) {
             // --- LOGIC: CHECK OUT ---
             
-            // Debounce (Double Scan Protection)
-            if ($activeSession->created_at->diffInMinutes(now()) < 2) {
+            // <--- Update Debounce Logic: Skip if Force is true
+            if (!$this->force && $activeSession->created_at->diffInMinutes(now()) < 2) {
                  event(new MemberScanFailed($member, 'ignored'));
-                 // We DO NOT notify admin here to avoid spamming "ignored" alerts
                  return;
             }
 

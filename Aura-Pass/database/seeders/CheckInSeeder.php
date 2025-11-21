@@ -14,77 +14,93 @@ class CheckInSeeder extends Seeder
         // 1. Clean the slate
         CheckIn::truncate(); 
 
+        // CONFIGURATION for "Furukawa Gym" simulation
         $daysToSeed = 60; 
-        $targetTotal = 500; // We aim for roughly this number
+        $targetTotal = 2000; // Target ~33 visits/day for 50 members
         
-        // Get real member IDs from your database
         $members = Member::pluck('id')->toArray();
 
-        // Safety Net: If you haven't created members yet, create some
         if (empty($members)) {
-            $this->command->info('No members found. Creating 10 dummy members...');
-            $members = \App\Models\Member::factory()->count(10)->create()->pluck('id')->toArray();
+            $this->command->info('No members found. Creating 50 dummy members...');
+            $members = \App\Models\Member::factory()->count(50)->create()->pluck('id')->toArray();
         }
 
-        // WEIGHTS: Higher number = More traffic at that hour
+        // REALISTIC WEIGHTS (La Trinidad Profile)
+        // 0-5: Closed/Empty
+        // 6-8: Morning Rush (Workers)
+        // 9-14: Quiet / Lunch
+        // 15-16: Students arrive
+        // 17-19: After-work Peak (Maximum traffic)
+        // 20-21: Tapering off
         $hourWeights = [
-            0 => 1,  1 => 0,  2 => 0,  3 => 0,  4 => 1,  5 => 3,  
-            6 => 15, 7 => 30, 8 => 25, 9 => 15, 10 => 10, 11 => 8, 
-            12 => 12, 13 => 10, 14 => 10, 15 => 12, 16 => 15,      
-            17 => 40, 18 => 50, 19 => 45, 20 => 30, 21 => 15,      
-            22 => 5,  23 => 2                                      
+            0 => 0,  1 => 0,  2 => 0,  3 => 0,  4 => 0,  5 => 2,   // 5 AM: Early birds
+            6 => 20, 7 => 35, 8 => 25, 9 => 15, 10 => 10, 11 => 10, // Morning
+            12 => 15, 13 => 15, 14 => 20,                           // Lunch / Slow
+            15 => 35, 16 => 55,                                     // Student Surge
+            17 => 85, 18 => 90, 19 => 75,                           // The "Furukawa Peak"
+            20 => 40, 21 => 15,                                     // Cooldown
+            22 => 5,  23 => 0                                       // Closing
         ];
 
-        $data = [];
+        $buffer = []; 
+        $batchSize = 500; 
+        $totalInserted = 0;
         
-        // Loop backwards from 60 days ago until today
         for ($i = $daysToSeed; $i >= 0; $i--) {
             
             $date = Carbon::now()->subDays($i);
             $isWeekend = $date->isWeekend();
             
-            // SCALED DOWN NUMBERS FOR ~500 TOTAL LIMIT
-            // Logic: Weekends (3-5 people), Weekdays (6-10 people)
-            // This ensures we have data every day but stay low volume.
-            $growthFactor = ($daysToSeed - $i) * 0.1; 
-            $baseVisitors = $isWeekend ? rand(3, 5) : rand(6, 10);
+            // VOLUME LOGIC (50 Members)
+            // To hit ~2000 visits in 60 days, we need ~33 visits/day.
+            // Weekends are usually quieter in commercial gyms.
+            $growthFactor = ($daysToSeed - $i) * 0.2; // Slight growth trend
+            $baseVisitors = $isWeekend ? rand(20, 30) : rand(30, 45);
             $totalVisitors = ceil($baseVisitors + $growthFactor);
 
             for ($v = 0; $v < $totalVisitors; $v++) {
-                // Stop generating if we strictly hit the limit (Optional safety)
-                if (count($data) >= $targetTotal) {
+                if ($totalInserted >= $targetTotal) {
                     break 2; 
                 }
 
                 $hour = $this->getWeightedRandomHour($hourWeights);
                 
-                // 1. CHECK IN TIME
+                // Randomized minute (0-59)
                 $checkInTime = $date->copy()->setTime($hour, rand(0, 59), rand(0, 59));
+                
+                // DURATION LOGIC
+                // Morning sessions are tighter (45-75 mins)
+                // Evening sessions are longer (60-120 mins)
+                $minDuration = ($hour < 9) ? 45 : 60;
+                $maxDuration = ($hour < 9) ? 75 : 120;
+                
+                $checkOutTime = $checkInTime->copy()->addMinutes(rand($minDuration, $maxDuration));
 
-                // 2. CHECK OUT TIME 
-                $duration = rand(45, 120); 
-                $checkOutTime = $checkInTime->copy()->addMinutes($duration);
-
-                // REALISM: If checkout is in the future, set to NULL (Still in gym)
                 if ($checkOutTime->isFuture()) {
                     $checkOutTime = null; 
                 }
 
-                $data[] = [
+                $buffer[] = [
                     'member_id' => $members[array_rand($members)], 
                     'created_at' => $checkInTime,     
                     'check_out_at' => $checkOutTime,  
                     'updated_at' => $checkOutTime ?? $checkInTime,
                 ];
+
+                $totalInserted++;
+
+                if (count($buffer) >= $batchSize) {
+                    CheckIn::insert($buffer);
+                    $buffer = [];
+                }
             }
         }
 
-        // Bulk Insert
-        foreach (array_chunk($data, 500) as $chunk) {
-            CheckIn::insert($chunk);
+        if (!empty($buffer)) {
+            CheckIn::insert($buffer);
         }
         
-        $this->command->info('Successfully seeded ' . count($data) . ' gym visits!');
+        $this->command->info("Successfully seeded {$totalInserted} realistic visits based on Furukawa profile!");
     }
 
     private function getWeightedRandomHour(array $weights): int

@@ -63,7 +63,7 @@ class PeakHoursChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => 'Avg. Crowd Size',
+                    'label' => 'Avg. Check-Ins',
                     'data' => $averages,
                     'backgroundColor' => '#3B82F6', 
                     'borderRadius' => 4,
