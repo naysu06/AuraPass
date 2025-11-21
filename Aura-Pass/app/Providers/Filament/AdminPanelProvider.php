@@ -54,6 +54,9 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            // Enable the bell icon and make it check every 2 seconds
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('2s');
     }
 }

@@ -10,7 +10,15 @@ class CheckIn extends Model
     /**
      * The attributes that are mass assignable.
      */
-    protected $fillable = ['member_id'];
+    protected $fillable = [
+        'member_id',
+        'check_out_at',
+    ];
+
+    // This fixes the timezone math!
+    protected $casts = [
+        'check_out_at' => 'datetime', 
+    ];
 
     /**
      * Get the member that owns the check-in.

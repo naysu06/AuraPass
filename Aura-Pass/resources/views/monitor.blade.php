@@ -82,77 +82,96 @@
         });
 
         window.Echo.channel('monitor-screen')
-            .listen('.member.scanned', (e) => {
-                updateStatusUI(e.status, e.member);
-            });
+        // 1. Handle Entry
+        .listen('.member.checked_in', (e) => {
+            updateStatusUI('checked_in', e.member);
+        })
+        // 2. Handle Exit
+        .listen('.member.checked_out', (e) => {
+            updateStatusUI('checked_out', e.member);
+        })
+        // 3. Handle Errors (Expired / Not Found / Ignored)
+        .listen('.member.scan_failed', (e) => {
+            updateStatusUI(e.reason, e.member);
+        });
 
         // --- 2. UPDATED UI LOGIC ---
         function updateStatusUI(status, member) {
-            // Reset
-            statusPanel.className = ''; 
-            messageBox.classList.remove('show');
-            dateText.classList.remove('visible');
-
-            // --- SCENARIO: CHECK IN ---
-            if (status === 'checked_in' || status === 'active') {
-                statusPanel.classList.add('bg-green');
-                statusText.textContent = 'WELCOME IN!';
-                nameText.textContent = member.name;
-                dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
-                dateText.classList.add('visible');
-            } 
+            // <--- FIX IS HERE --->
+        if (status === 'ignored') {
+            console.log('Debounce: Scan ignored.');
             
-            // --- SCENARIO: CHECK OUT (NEW) ---
-            else if (status === 'checked_out') {
-                statusPanel.classList.add('bg-blue'); // Uses the new Blue Color
-                statusText.textContent = 'GOODBYE!';
+            // CRITICAL: Unlock the scanner so they can scan again!
+            isOnCooldown = false; 
+            
+            return; 
+        }
+
+        // <--- NOW it is safe to reset the UI --->
+        statusPanel.className = ''; 
+        messageBox.classList.remove('show');
+        dateText.classList.remove('visible');
+
+        // --- SCENARIO: CHECK IN ---
+        if (status === 'checked_in' || status === 'active') {
+            statusPanel.classList.add('bg-green');
+            statusText.textContent = 'WELCOME';
+            nameText.textContent = member.name;
+            dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
+            dateText.classList.add('visible');
+        } 
+        
+        // --- SCENARIO: CHECK OUT ---
+        else if (status === 'checked_out') {
+            statusPanel.classList.add('bg-blue');
+            statusText.textContent = 'GOODBYE!';
+            // Added Safety Check from previous step
+            if(member) {
                 nameText.textContent = member.name;
                 dateText.textContent = 'See you next time!';
-                dateText.classList.add('visible');
-            }
-
-            // --- SCENARIO: EXPIRED ---
-            else if (status === 'expired') {
-                statusPanel.classList.add('bg-red');
-                statusText.textContent = 'MEMBERSHIP EXPIRED';
-                nameText.textContent = member.name;
-                dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
-                dateText.classList.add('visible');
-            } 
-            
-            // --- SCENARIO: INVALID ---
-            else if (status === 'not_found') {
-                statusPanel.classList.add('bg-red');
-                statusText.textContent = 'INVALID QR';
-                nameText.textContent = 'Member not found.';
+            } else {
+                nameText.textContent = 'Member';
                 dateText.textContent = '';
             }
-            
-            // --- SCENARIO: IGNORED (Double Scan) ---
-            else if (status === 'ignored') {
-                 // Don't change anything, just return so we don't reset the screen
-                 return;
-            }
-
-            // Trigger Animation
-            void messageBox.offsetWidth; 
-            messageBox.classList.add('show');
-
-            // Reset Timer
-            setTimeout(() => {
-                messageBox.classList.remove('show');
-                setTimeout(() => { 
-                    statusPanel.className = 'bg-default';
-                    statusText.textContent = 'WELCOME TO QUADS-FURUKAWA GYM';
-                    nameText.textContent = 'Please scan your provided QR code.';
-                    dateText.textContent = '';
-                    dateText.classList.remove('visible');
-                    messageBox.classList.add('show');
-                    
-                    isOnCooldown = false; // Unlock scanner
-                }, 500);
-            }, 3000);
+            dateText.classList.add('visible');
         }
+
+        // --- SCENARIO: EXPIRED ---
+        else if (status === 'expired') {
+            statusPanel.classList.add('bg-red');
+            statusText.textContent = 'MEMBERSHIP EXPIRED';
+            nameText.textContent = member.name;
+            dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
+            dateText.classList.add('visible');
+        } 
+        
+        // --- SCENARIO: INVALID ---
+        else if (status === 'not_found') {
+            statusPanel.classList.add('bg-red');
+            statusText.textContent = 'INVALID QR';
+            nameText.textContent = 'Member not found.';
+            dateText.textContent = '';
+        }
+
+        // Trigger Animation
+        void messageBox.offsetWidth; 
+        messageBox.classList.add('show');
+
+        // Reset Timer
+        setTimeout(() => {
+            messageBox.classList.remove('show');
+            setTimeout(() => { 
+                statusPanel.className = 'bg-default';
+                statusText.textContent = 'WELCOME TO QUADS-FURUKAWA GYM';
+                nameText.textContent = 'Please scan your provided QR code.';
+                dateText.textContent = '';
+                dateText.classList.remove('visible');
+                messageBox.classList.add('show');
+                
+                isOnCooldown = false; 
+            }, 500);
+        }, 3000);
+    }
 
         const onScanSuccess = (result) => {
             if (isOnCooldown) return;

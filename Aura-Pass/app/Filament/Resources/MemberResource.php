@@ -7,6 +7,8 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use App\Filament\Resources\MemberResource\Pages;
 use App\Filament\Resources\MemberResource\RelationManagers;
 use App\Models\Member;
+use App\Jobs\ProcessQrScan; // <--- IMPORT THE JOB
+use Filament\Notifications\Notification; // <--- IMPORT NOTIFICATIONS
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -43,8 +45,30 @@ class MemberResource extends Resource
                 Tables\Columns\TextColumn::make('unique_id')->label('QR ID')->searchable(),
             ])
             ->actions([
+                // 1. EDIT
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\ViewAction::make(), // <-- Add this
+                
+                // 2. VIEW
+                Tables\Actions\ViewAction::make(),
+
+                // 3. FORCE CHECK-IN/OUT (The New Action)
+                Tables\Actions\Action::make('force_scan')
+                    ->label('Force Scan')
+                    ->icon('heroicon-o-qr-code') // Looks like a scan
+                    ->color('warning') // Yellow to indicate "Staff Override"
+                    ->requiresConfirmation()
+                    ->modalHeading('Manual Check-In / Check-Out')
+                    ->modalDescription('This will simulate a QR scan for this member. The standard rules (Debounce, 12-hour limit, Timezone fix) will apply exactly as if they used the kiosk.')
+                    ->action(function (Member $record) {
+                        // Dispatch the exact same job the Kiosk uses
+                        ProcessQrScan::dispatch($record->unique_id);
+
+                        Notification::make()
+                            ->title('Scan Sent to Queue')
+                            ->body("Processing check-in/out for {$record->name}...")
+                            ->success()
+                            ->send();
+                    }),
             ]);
     }
 
@@ -55,31 +79,25 @@ class MemberResource extends Resource
         ];
     }
 
-public static function infolist(Infolists\Infolist $infolist): Infolists\Infolist
-{
-    return $infolist
-        ->schema([
-            TextEntry::make('name'),
-            TextEntry::make('email'),
-            TextEntry::make('membership_expiry_date')->date(),
+    public static function infolist(Infolists\Infolist $infolist): Infolists\Infolist
+    {
+        return $infolist
+            ->schema([
+                TextEntry::make('name'),
+                TextEntry::make('email'),
+                TextEntry::make('membership_expiry_date')->date(),
 
-            // This is the new, working QR Code section
-            ImageEntry::make('qr_code')
-                ->label('Member QR Code')
-                // We dynamically generate the QR code here
-                ->default(function ($record) {
-                    // $record is the current Member model
-                    $qrCode = QrCode::format('svg')
-                                    ->size(250)
-                                    ->generate($record->unique_id);
+                ImageEntry::make('qr_code')
+                    ->label('Member QR Code')
+                    ->default(function ($record) {
+                        $qrCode = QrCode::format('svg')
+                                        ->size(250)
+                                        ->generate($record->unique_id);
+                        return 'data:image/svg+xml;base64,' . base64_encode($qrCode);
+                    }),
+            ]);
+    }
 
-                    // Return the QR code as a Base64 encoded string
-                    return 'data:image/svg+xml;base64,' . base64_encode($qrCode);
-                }),
-        ]);
-}
-
-    // Also, tell Filament to use this new View page
     public static function getPages(): array
     {
         return [
