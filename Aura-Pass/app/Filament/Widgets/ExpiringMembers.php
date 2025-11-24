@@ -23,8 +23,9 @@ class ExpiringMembers extends BaseWidget
         return $table
             ->query(
                 Member::query()
-                    ->where('membership_expiry_date', '>=', now()) 
-                    ->where('membership_expiry_date', '<=', now()->addDays(7)) 
+                    // <--- FIX: Use startOfDay() to include members expiring TODAY
+                    ->where('membership_expiry_date', '>=', now()->startOfDay()) 
+                    ->where('membership_expiry_date', '<=', now()->addDays(7)->endOfDay()) 
                     ->orderBy('membership_expiry_date', 'asc') 
             )
             ->columns([

@@ -124,7 +124,7 @@
         // --- SCENARIO: CHECK OUT ---
         else if (status === 'checked_out') {
             statusPanel.classList.add('bg-blue');
-            statusText.textContent = 'GOODBYE!';
+            statusText.textContent = 'THANK YOU FOR WORKING OUT';
             // Added Safety Check from previous step
             if(member) {
                 nameText.textContent = member.name;
@@ -139,7 +139,7 @@
         // --- SCENARIO: EXPIRED ---
         else if (status === 'expired') {
             statusPanel.classList.add('bg-red');
-            statusText.textContent = 'MEMBERSHIP EXPIRED';
+            statusText.textContent = 'YOUR MEMBERSHIP EXPIRED';
             nameText.textContent = member.name;
             dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
             dateText.classList.add('visible');
@@ -218,7 +218,7 @@
                         preferredCamera: deviceId || 'environment',
                         highlightScanRegion: true,
                         highlightCodeOutline: true,
-                        maxScansPerSecond: 25, 
+                        maxScansPerSecond: 100, 
                     }
                 );
                 qrScanner.start().then(() => {
