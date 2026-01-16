@@ -139,7 +139,7 @@
         // --- SCENARIO: EXPIRED ---
         else if (status === 'expired') {
             statusPanel.classList.add('bg-red');
-            statusText.textContent = 'YOUR MEMBERSHIP EXPIRED';
+            statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED\n PLEASE RENEW AT THE FRONT DESK';
             nameText.textContent = member.name;
             dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
             dateText.classList.add('visible');
