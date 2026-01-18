@@ -8,6 +8,7 @@ use App\Events\MemberScanFailed;
 use App\Models\Member;
 use App\Models\User; 
 use Filament\Notifications\Notification; 
+use Filament\Notifications\Actions\Action; // <--- 1. Import this for buttons
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,6 +27,7 @@ class ProcessQrScan implements ShouldQueue
         $this->qrData = $qrData;
         $this->force = $force;
     }
+
     public function handle(): void
     {
         $member = Member::where('unique_id', $this->qrData)->first();
@@ -35,42 +37,39 @@ class ProcessQrScan implements ShouldQueue
         // SCENARIO 1: MEMBER NOT FOUND (Invalid QR)
         // -----------------------------------------
         if (!$member) {
-            // 1. Update Kiosk Screen
             event(new MemberScanFailed(null, 'not_found'));
 
-            // 2. Alert Admin (Red Toast)
             Notification::make()
                 ->title('Scan Failed')
                 ->body("Invalid QR Code Scanned: {$this->qrData}")
-                ->danger() // Red Color
+                ->danger() 
                 ->broadcast($admins)
                 ->sendToDatabase($admins);
             
-            return; // Stop processing
+            return; 
         }
 
         // -----------------------------------------
         // SCENARIO 2: MEMBERSHIP EXPIRED
         // -----------------------------------------
         if ($member->membership_expiry_date < now()->startOfDay()) {
-            // 1. Update Kiosk Screen
             event(new MemberScanFailed($member, 'expired'));
             
-            // 2. Alert Admin (Red Toast)
             Notification::make()
                 ->title('Entry Denied')
                 ->body("Expired Membership: {$member->name}")
-                ->danger() // Red Color
+                ->danger() 
+                // <--- 2. Add Button to View Profile
                 ->actions([
-                    // Optional: Add a button to quickly view the member
-                    \Filament\Notifications\Actions\Action::make('view')
+                    Action::make('view')
+                        ->label('View Profile')
                         ->button()
                         ->url("/admin/members/{$member->id}", shouldOpenInNewTab: true),
                 ])
                 ->broadcast($admins)
                 ->sendToDatabase($admins);
             
-            return; // Stop processing
+            return; 
         }
 
         // -----------------------------------------
@@ -85,7 +84,6 @@ class ProcessQrScan implements ShouldQueue
         if ($activeSession) {
             // --- LOGIC: CHECK OUT ---
             
-            // <--- Update Debounce Logic: Skip if Force is true
             if (!$this->force && $activeSession->created_at->diffInMinutes(now()) < 2) {
                  event(new MemberScanFailed($member, 'ignored'));
                  return;
@@ -97,11 +95,17 @@ class ProcessQrScan implements ShouldQueue
 
             event(new MemberCheckedOut($member));
 
-            // Notify Admin: Left
             Notification::make()
                 ->title('Member Left')
                 ->body("{$member->name} checked out.")
-                ->info() // Blue
+                ->info() 
+                // <--- 3. Add Button to Verify Face
+                ->actions([
+                    Action::make('verify')
+                        ->label('Verify Face')
+                        ->button()
+                        ->url("/admin/members/{$member->id}", shouldOpenInNewTab: true),
+                ])
                 ->broadcast($admins)
                 ->sendToDatabase($admins);
 
@@ -111,11 +115,17 @@ class ProcessQrScan implements ShouldQueue
 
             event(new MemberCheckedIn($member));
 
-            // Notify Admin: Entered
             Notification::make()
                 ->title('Member Entered')
                 ->body("{$member->name} checked in.")
-                ->success() // Green
+                ->success() 
+                // <--- 4. Add Button to Verify Face
+                ->actions([
+                    Action::make('verify')
+                        ->label('Verify Face')
+                        ->button()
+                        ->url("/admin/members/{$member->id}", shouldOpenInNewTab: true),
+                ])
                 ->broadcast($admins)
                 ->sendToDatabase($admins);
         }

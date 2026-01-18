@@ -10,7 +10,7 @@
     @vite('resources/css/app.css') 
     
     <style>
-        /* ... (Previous styles remain the same) ... */
+        /* ... (Keep your existing styles) ... */
         body, html { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; background-color: #111827; }
         .kiosk-layout { display: flex; width: 100%; height: 100%; }
         #status-panel { flex: 1.5; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2rem; color: white; transition: background-color 0.5s ease; }
@@ -26,11 +26,21 @@
         .bg-default { background-color: #374151; } 
         .bg-green { background-color: #10B981; } 
         .bg-red { background-color: #EF4444; } 
-        
-        /* 1. NEW: Blue background for Check Out */
         .bg-blue { background-color: #3B82F6; } 
 
-        /* ... (Scanner styles remain the same) ... */
+        /* --- NEW: MEMBER PHOTO STYLE --- */
+        #member-photo {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%; /* Circle */
+            object-fit: cover;
+            border: 4px solid white;
+            margin-bottom: 20px;
+            display: none; /* Hidden by default */
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        #member-photo.visible { display: block; }
+
         #scanner-ui { width: 100%; max-width: 600px; background: #374151; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         #camera-select { color: black; width: 100%; padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 1rem; }
         video { width: 100%; height: auto; border-radius: 0.25rem; transform: scaleX(-1) !important; }
@@ -40,7 +50,10 @@
 
     <div class="kiosk-layout">
         <div id="status-panel" class="bg-default">
-            <div id="message" class="show"> 
+            <div id="message" class="show flex flex-col items-center"> 
+                <!-- NEW: The Image Element -->
+                <img id="member-photo" src="" alt="Member Face" />
+
                 <h1 id="status-text">WELCOME TO QUADS-FURUKAWA GYM</h1>
                 <p id="name-text">Please scan your provided QR code.</p>
                 <div style="width:100%; margin-top: 10px;">
@@ -68,6 +81,8 @@
         const statusText = document.getElementById('status-text');
         const nameText = document.getElementById('name-text');
         const dateText = document.getElementById('date-text');
+        const memberPhoto = document.getElementById('member-photo'); // <--- Select Image
+        
         const videoElem = document.getElementById('qr-video');
         const cameraSelect = document.getElementById('camera-select');
         
@@ -82,97 +97,103 @@
         });
 
         window.Echo.channel('monitor-screen')
-        // 1. Handle Entry
         .listen('.member.checked_in', (e) => {
             updateStatusUI('checked_in', e.member);
         })
-        // 2. Handle Exit
         .listen('.member.checked_out', (e) => {
             updateStatusUI('checked_out', e.member);
         })
-        // 3. Handle Errors (Expired / Not Found / Ignored)
         .listen('.member.scan_failed', (e) => {
             updateStatusUI(e.reason, e.member);
         });
 
-        // --- 2. UPDATED UI LOGIC ---
         function updateStatusUI(status, member) {
-            // <--- FIX IS HERE --->
-        if (status === 'ignored') {
-            console.log('Debounce: Scan ignored.');
-            
-            // CRITICAL: Unlock the scanner so they can scan again!
-            isOnCooldown = false; 
-            
-            return; 
-        }
-
-        // <--- NOW it is safe to reset the UI --->
-        statusPanel.className = ''; 
-        messageBox.classList.remove('show');
-        dateText.classList.remove('visible');
-
-        // --- SCENARIO: CHECK IN ---
-        if (status === 'checked_in' || status === 'active') {
-            statusPanel.classList.add('bg-green');
-            statusText.textContent = 'WELCOME';
-            nameText.textContent = member.name;
-            dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
-            dateText.classList.add('visible');
-        } 
-        
-        // --- SCENARIO: CHECK OUT ---
-        else if (status === 'checked_out') {
-            statusPanel.classList.add('bg-blue');
-            statusText.textContent = 'THANK YOU FOR WORKING OUT';
-            // Added Safety Check from previous step
-            if(member) {
-                nameText.textContent = member.name;
-                dateText.textContent = 'See you next time!';
-            } else {
-                nameText.textContent = 'Member';
-                dateText.textContent = '';
-            }
-            dateText.classList.add('visible');
-        }
-
-        // --- SCENARIO: EXPIRED ---
-        else if (status === 'expired') {
-            statusPanel.classList.add('bg-red');
-            statusText.textContent = 'YOUR MEMBERSHIP HAS EXPIRED\n PLEASE RENEW AT THE FRONT DESK';
-            nameText.textContent = member.name;
-            dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
-            dateText.classList.add('visible');
-        } 
-        
-        // --- SCENARIO: INVALID ---
-        else if (status === 'not_found') {
-            statusPanel.classList.add('bg-red');
-            statusText.textContent = 'INVALID QR';
-            nameText.textContent = 'Member not found.';
-            dateText.textContent = '';
-        }
-
-        // Trigger Animation
-        void messageBox.offsetWidth; 
-        messageBox.classList.add('show');
-
-        // Reset Timer
-        setTimeout(() => {
-            messageBox.classList.remove('show');
-            setTimeout(() => { 
-                statusPanel.className = 'bg-default';
-                statusText.textContent = 'WELCOME TO QUADS-FURUKAWA GYM';
-                nameText.textContent = 'Please scan your provided QR code.';
-                dateText.textContent = '';
-                dateText.classList.remove('visible');
-                messageBox.classList.add('show');
-                
+            if (status === 'ignored') {
+                console.log('Debounce: Scan ignored.');
                 isOnCooldown = false; 
-            }, 500);
-        }, 3000);
-    }
+                return; 
+            }
 
+            statusPanel.className = ''; 
+            messageBox.classList.remove('show');
+            dateText.classList.remove('visible');
+            memberPhoto.classList.remove('visible'); // Hide photo initially
+
+            // Helper to show photo if it exists
+            const showMemberPhoto = (mem) => {
+                if (mem && mem.profile_photo) {
+                    // Assuming you have run "php artisan storage:link"
+                    memberPhoto.src = '/storage/' + mem.profile_photo;
+                    memberPhoto.classList.add('visible');
+                } else {
+                    memberPhoto.src = ''; // Clear it
+                }
+            };
+
+            // --- SCENARIO: CHECK IN ---
+            if (status === 'checked_in' || status === 'active') {
+                statusPanel.classList.add('bg-green');
+                statusText.textContent = 'WELCOME';
+                nameText.textContent = member.name;
+                dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
+                dateText.classList.add('visible');
+                showMemberPhoto(member); // <--- Show Face
+            } 
+            
+            // --- SCENARIO: CHECK OUT ---
+            else if (status === 'checked_out') {
+                statusPanel.classList.add('bg-blue');
+                statusText.textContent = 'THANK YOU FOR WORKING OUT';
+                if(member) {
+                    nameText.textContent = member.name;
+                    dateText.textContent = 'See you next time!';
+                    showMemberPhoto(member); // <--- Show Face
+                } else {
+                    nameText.textContent = 'Member';
+                    dateText.textContent = '';
+                }
+                dateText.classList.add('visible');
+            }
+
+            // --- SCENARIO: EXPIRED ---
+            else if (status === 'expired') {
+                statusPanel.classList.add('bg-red');
+                statusText.textContent = 'MEMBERSHIP EXPIRED';
+                nameText.textContent = member.name;
+                dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
+                dateText.classList.add('visible');
+                showMemberPhoto(member); // <--- Show Face (Important for catching fraud!)
+            } 
+            
+            // --- SCENARIO: INVALID ---
+            else if (status === 'not_found') {
+                statusPanel.classList.add('bg-red');
+                statusText.textContent = 'INVALID QR';
+                nameText.textContent = 'Member not found.';
+                dateText.textContent = '';
+                // No photo to show for invalid
+            }
+
+            void messageBox.offsetWidth; 
+            messageBox.classList.add('show');
+
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                setTimeout(() => { 
+                    statusPanel.className = 'bg-default';
+                    statusText.textContent = 'WELCOME TO QUADS-FURUKAWA GYM';
+                    nameText.textContent = 'Please scan your provided QR code.';
+                    dateText.textContent = '';
+                    dateText.classList.remove('visible');
+                    memberPhoto.classList.remove('visible'); // Hide Photo
+                    messageBox.classList.add('show');
+                    
+                    isOnCooldown = false; 
+                }, 500);
+            }, 3000);
+        }
+
+        // ... (Rest of scanner logic remains the same) ...
         const onScanSuccess = (result) => {
             if (isOnCooldown) return;
             isOnCooldown = true;

@@ -12,7 +12,7 @@ class Member extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'email', 'membership_expiry_date']; // Add fillable fields
+    protected $fillable = ['name', 'email', 'membership_expiry_date', 'profile_photo']; // Add fillable fields
 
     /**
      * The attributes that should be cast.

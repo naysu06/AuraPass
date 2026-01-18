@@ -7,8 +7,8 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use App\Filament\Resources\MemberResource\Pages;
 use App\Filament\Resources\MemberResource\RelationManagers;
 use App\Models\Member;
-use App\Jobs\ProcessQrScan; // <--- IMPORT THE JOB
-use Filament\Notifications\Notification; // <--- IMPORT NOTIFICATIONS
+use App\Jobs\ProcessQrScan; 
+use Filament\Notifications\Notification; 
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Filament\Infolists;
 use Filament\Infolists\Components\TextEntry;
+use App\Forms\Components\WebcamCapture;
 
 class MemberResource extends Resource
 {
@@ -32,6 +33,23 @@ class MemberResource extends Resource
                 Forms\Components\TextInput::make('name')->required(),
                 Forms\Components\TextInput::make('email')->email(),
                 Forms\Components\DatePicker::make('membership_expiry_date')->required(),
+                
+                Forms\Components\Section::make('Photo Identification')
+                    ->schema([
+                        // 1. Webcam Input
+                        WebcamCapture::make('webcam_data')
+                            ->label('Take Photo (Admin Camera)')
+                            // ->dehydrated(false) <--- REMOVED THIS LINE (Fix #1)
+                            ->reactive(),
+
+                        // 2. Standard Upload
+                        Forms\Components\FileUpload::make('profile_photo')
+                            ->label('Current Photo')
+                            ->image()
+                            ->directory('member-photos')
+                            ->disk('public')
+                            ->visibility('public'),
+                    ]),
             ]);
     }
 
@@ -39,16 +57,20 @@ class MemberResource extends Resource
     {
         return $table
             ->columns([
+                // 3. Table Image Display
+                Tables\Columns\ImageColumn::make('profile_photo')
+                    ->label('Photo')
+                    ->circular()
+                    ->disk('public') // <--- ADDED THIS (Fix #2)
+                    ->defaultImageUrl(url('/images/placeholder-face.png')),
+
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('email')->searchable(),
                 Tables\Columns\TextColumn::make('membership_expiry_date')->date()->sortable(),
                 Tables\Columns\TextColumn::make('unique_id')->label('QR ID')->searchable(),
             ])
             ->actions([
-                // 1. EDIT
                 Tables\Actions\EditAction::make(),
-                
-                // 2. VIEW
                 Tables\Actions\ViewAction::make(),
             ]);
     }
@@ -64,6 +86,13 @@ class MemberResource extends Resource
     {
         return $infolist
             ->schema([
+                // 4. View Page Image Display
+                ImageEntry::make('profile_photo')
+                    ->label('Verification Photo')
+                    ->height(200)
+                    ->circular(false)
+                    ->disk('public'), // <--- ADDED THIS (Fix #2)
+
                 TextEntry::make('name'),
                 TextEntry::make('email'),
                 TextEntry::make('membership_expiry_date')->date(),
