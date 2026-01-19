@@ -22,26 +22,33 @@ class AccessLogResource extends Resource
     {
         return $table
             ->columns([
-                // 1. Member Name
+                // 1. NEW: Member Photo
+                Tables\Columns\ImageColumn::make('member.profile_photo')
+                    ->label('Photo')
+                    ->circular()
+                    ->disk('public') // Explicitly use the public disk
+                    ->defaultImageUrl(url('/images/placeholder-face.png')), // Fallback
+
+                // 2. Member Name
                 Tables\Columns\TextColumn::make('member.name')
                     ->label('Member')
                     ->searchable()
                     ->sortable(),
 
-                // 2. Check In Time
+                // 3. Check In Time
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Checked In')
                     ->dateTime('M d, h:i A')
                     ->sortable(),
 
-                // 3. Check Out Time
+                // 4. Check Out Time
                 Tables\Columns\TextColumn::make('check_out_at')
                     ->label('Checked Out')
                     ->dateTime('h:i A')
                     ->placeholder('Active Session')
                     ->sortable(),
 
-                // 4. Duration Calculation
+                // 5. Duration Calculation
                 Tables\Columns\TextColumn::make('duration')
                     ->label('Duration')
                     ->getStateUsing(fn (CheckIn $record) => 
@@ -52,7 +59,6 @@ class AccessLogResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
-                // Filter to see who is currently in the gym
                 Tables\Filters\Filter::make('active')
                     ->label('Currently Inside')
                     ->query(fn ($query) => $query->whereNull('check_out_at')),
@@ -60,10 +66,9 @@ class AccessLogResource extends Resource
             ->actions([
                 // 1. Force Scan - Manual Check-In/Out
                 Tables\Actions\Action::make('force_scan')
-                    ->label('Force Check-Out') // Label clarification
+                    ->label('Force Check-Out')
                     ->icon('heroicon-o-arrow-right-start-on-rectangle')
                     ->color('warning')
-                    // <--- 1. ONLY SHOW FOR ACTIVE SESSIONS (Check Out is Null)
                     ->visible(fn (CheckIn $record) => $record->check_out_at === null)
                     ->requiresConfirmation()
                     ->modalHeading('Force Check-Out')
@@ -71,7 +76,6 @@ class AccessLogResource extends Resource
                         "This will forcefully check out {$record->member->name}. Debounce protection will be bypassed."
                     )
                     ->action(function (CheckIn $record) {
-                        // <--- 2. PASS 'TRUE' TO FORCE THE JOB
                         ProcessQrScan::dispatchSync($record->member->unique_id, true);
 
                         Notification::make()
@@ -81,16 +85,21 @@ class AccessLogResource extends Resource
                             ->send();
                     }),
                 
+                // 2. Delete Action
                 Tables\Actions\DeleteAction::make(),
-            ]);
+            ])
+            ->recordUrl(
+                // Redirect to the Member View page when a row is clicked
+                fn (CheckIn $record): string => route('filament.admin.resources.members.view', ['record' => $record->member_id])
+            );
     }
 
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListAccessLog::route('/'),
-            'create' => Pages\CreateAccessLog::route('/create'),
-            'edit' => Pages\EditAccessLog::route('/{record}/edit'),
+            // 'create' => Pages\CreateAccessLog::route('/create'), // Disabled creation via UI
+            // 'edit' => Pages\EditAccessLog::route('/{record}/edit'), // REMOVED: Disables editing logic
         ];
     }
     
