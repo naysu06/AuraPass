@@ -46,7 +46,8 @@ class MemberResource extends Resource
                 Forms\Components\Select::make('membership_type')
                     ->options([
                         'regular' => 'Regular',
-                        'discount' => 'Discount / Student',
+                        'discount' => 'Discount',
+                        'promo' => 'Promo',
                     ])
                     ->required()
                     ->default('regular'),
@@ -90,6 +91,7 @@ class MemberResource extends Resource
                     ->color(fn (string $state): string => match ($state) {
                         'regular' => 'info',
                         'discount' => 'success',
+                        'promo' => 'primary',
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state): string => ucfirst($state)),
@@ -155,6 +157,7 @@ class MemberResource extends Resource
                                 ->color(fn (string $state): string => match ($state) {
                                     'regular' => 'info',
                                     'discount' => 'success',
+                                    'promo' => 'primary',
                                     default => 'gray',
                                 })
                                 ->formatStateUsing(fn (string $state): string => ucfirst($state)),

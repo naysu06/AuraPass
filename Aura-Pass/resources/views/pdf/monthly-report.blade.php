@@ -26,6 +26,7 @@
             <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Type</th> <!-- New Column Header -->
                 <th>Date Registered</th>
                 <th>Membership Expiry</th>
             </tr>
@@ -35,12 +36,14 @@
                 <tr>
                     <td>{{ $member->name }}</td>
                     <td>{{ $member->email }}</td>
+                    <td>{{ ucfirst($member->membership_type) }}</td> <!-- New Column Data -->
                     <td>{{ $member->created_at->format('M d, Y') }}</td>
                     <td>{{ $member->membership_expiry_date->format('M d, Y') }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="4" style="text-align: center;">No new registrations found for this month.</td>
+                    <!-- Updated colspan to 5 to match new column count -->
+                    <td colspan="5" style="text-align: center;">No new registrations found for this month.</td>
                 </tr>
             @endforelse
         </tbody>
