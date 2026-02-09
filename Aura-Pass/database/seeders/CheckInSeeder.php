@@ -15,63 +15,80 @@ class CheckInSeeder extends Seeder
         // 1. Disable Foreign Key Checks to safely wipe tables
         Schema::disableForeignKeyConstraints();
         CheckIn::truncate();
-        Member::truncate(); // We wipe members to ensure we generate the specific "Scenario Data"
+        Member::truncate(); 
         Schema::enableForeignKeyConstraints();
 
-        $this->command->info('Generating 50 Realistic Members...');
+        $this->command->info('Generating 50 Realistic Members with Membership Types...');
 
         $members = [];
+        $types = ['regular', 'discount', 'promo'];
 
         // --- GROUP A: THE URGENT ONES (Expiring in 1-3 days) ---
-        // Good for testing the "Expiring Soon" widget red badge
-        foreach(range(1, 5) as $i) {
+        // Reduced to 2
+        foreach(range(1, 2) as $i) {
             $members[] = Member::factory()->create([
-                'name' => "Urgent User $i", // Optional: helps identify them
-                'created_at' => Carbon::now()->subMonths(rand(3, 12)), // Joined a while ago
+                'name' => "Urgent User $i", 
+                'created_at' => Carbon::now()->subMonths(rand(3, 12)), 
                 'membership_expiry_date' => Carbon::now()->addDays(rand(1, 3)),
+                'membership_type' => $types[array_rand($types)],
             ])->id;
         }
 
         // --- GROUP B: THE WARNING ONES (Expiring in 4-7 days) ---
-        // Good for testing the yellow badge
-        foreach(range(1, 5) as $i) {
+        // Reduced to 1
+        foreach(range(1, 1) as $i) {
             $members[] = Member::factory()->create([
                 'created_at' => Carbon::now()->subMonths(rand(2, 6)),
                 'membership_expiry_date' => Carbon::now()->addDays(rand(4, 7)),
+                'membership_type' => 'regular',
             ])->id;
         }
 
         // --- GROUP C: THE EXPIRED ONES (Expired 1-10 days ago) ---
-        // Good for testing Access Denied red screens
+        // Kept at 5 to test Access Denied functionality
         foreach(range(1, 5) as $i) {
             $members[] = Member::factory()->create([
                 'created_at' => Carbon::now()->subMonths(rand(6, 12)),
-                'membership_expiry_date' => Carbon::now()->subDays(rand(1, 10)), // Past date!
+                'membership_expiry_date' => Carbon::now()->subDays(rand(1, 10)), 
+                'membership_type' => $types[array_rand($types)],
             ])->id;
         }
 
         // --- GROUP D: THE FRESH BLOOD (Joined this week) ---
-        // Good for "New Members" reports
+        // Often on Promo
         foreach(range(1, 5) as $i) {
             $members[] = Member::factory()->create([
                 'created_at' => Carbon::now()->subDays(rand(0, 6)),
                 'membership_expiry_date' => Carbon::now()->addMonth(),
+                'membership_type' => 'promo',
             ])->id;
         }
 
         // --- GROUP E: THE REGULARS (Healthy expiry dates) ---
-        // The rest of the 30 members
-        foreach(range(1, 30) as $i) {
+        // Increased to 37 to maintain 50 Total Members
+        // Mix of types
+        foreach(range(1, 37) as $i) {
+            // weighted distribution: 60% regular, 30% discount, 10% promo
+            $rand = rand(1, 100);
+            if ($rand <= 60) {
+                $type = 'regular';
+            } elseif ($rand <= 90) {
+                $type = 'discount';
+            } else {
+                $type = 'promo';
+            }
+
             $members[] = Member::factory()->create([
-                'created_at' => Carbon::now()->subDays(rand(20, 300)), // Varied join dates
+                'created_at' => Carbon::now()->subDays(rand(20, 300)), // Varied join dates for realism
                 'membership_expiry_date' => Carbon::now()->addMonths(rand(1, 6)),
+                'membership_type' => $type,
             ])->id;
         }
 
         $this->command->info('Members generated. Starting Check-in Simulation (Furukawa Profile)...');
 
         // ---------------------------------------------------------
-        // CHECK-IN SIMULATION (Your existing logic)
+        // CHECK-IN SIMULATION
         // ---------------------------------------------------------
         
         $daysToSeed = 60; 

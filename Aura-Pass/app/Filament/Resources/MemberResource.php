@@ -99,6 +99,16 @@ class MemberResource extends Resource
                 Tables\Columns\TextColumn::make('membership_expiry_date')->date()->sortable(),
                 Tables\Columns\TextColumn::make('unique_id')->label('QR ID')->searchable(),
             ])
+            ->filters([
+                // NEW: Filter by Membership Type
+                Tables\Filters\SelectFilter::make('membership_type')
+                    ->label('Membership Type')
+                    ->options([
+                        'regular' => 'Regular',
+                        'discount' => 'Discount',
+                        'promo' => 'Promo',
+                    ]),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\ViewAction::make(),
