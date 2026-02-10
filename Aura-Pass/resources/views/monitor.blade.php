@@ -10,7 +10,7 @@
     @vite('resources/css/app.css') 
     
     <style>
-        /* ... (Keep your existing styles) ... */
+        /* ... (Your existing styles) ... */
         body, html { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; background-color: #111827; }
         .kiosk-layout { display: flex; width: 100%; height: 100%; }
         #status-panel { flex: 1.5; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2rem; color: white; transition: background-color 0.5s ease; }
@@ -27,16 +27,18 @@
         .bg-green { background-color: #10B981; } 
         .bg-red { background-color: #EF4444; } 
         .bg-blue { background-color: #3B82F6; } 
+        /* Added Orange for Strict Mode (Optional, usually Red is fine too) */
+        .bg-orange { background-color: #F59E0B; }
 
-        /* --- NEW: MEMBER PHOTO STYLE --- */
+        /* --- MEMBER PHOTO STYLE --- */
         #member-photo {
             width: 150px;
             height: 150px;
-            border-radius: 50%; /* Circle */
+            border-radius: 50%; 
             object-fit: cover;
             border: 4px solid white;
             margin-bottom: 20px;
-            display: none; /* Hidden by default */
+            display: none; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
         #member-photo.visible { display: block; }
@@ -51,7 +53,7 @@
     <div class="kiosk-layout">
         <div id="status-panel" class="bg-default">
             <div id="message" class="show flex flex-col items-center"> 
-                <!-- NEW: The Image Element -->
+                <!-- Image Element -->
                 <img id="member-photo" src="" alt="Member Face" />
 
                 <h1 id="status-text">WELCOME TO QUADS-FURUKAWA GYM</h1>
@@ -81,7 +83,7 @@
         const statusText = document.getElementById('status-text');
         const nameText = document.getElementById('name-text');
         const dateText = document.getElementById('date-text');
-        const memberPhoto = document.getElementById('member-photo'); // <--- Select Image
+        const memberPhoto = document.getElementById('member-photo'); 
         
         const videoElem = document.getElementById('qr-video');
         const cameraSelect = document.getElementById('camera-select');
@@ -117,37 +119,36 @@
             statusPanel.className = ''; 
             messageBox.classList.remove('show');
             dateText.classList.remove('visible');
-            memberPhoto.classList.remove('visible'); // Hide photo initially
+            memberPhoto.classList.remove('visible'); 
 
             // Helper to show photo if it exists
             const showMemberPhoto = (mem) => {
                 if (mem && mem.profile_photo) {
-                    // Assuming you have run "php artisan storage:link"
                     memberPhoto.src = '/storage/' + mem.profile_photo;
                     memberPhoto.classList.add('visible');
                 } else {
-                    memberPhoto.src = ''; // Clear it
+                    memberPhoto.src = ''; 
                 }
             };
 
-            // --- SCENARIO: CHECK IN ---
+            // --- CHECK IN ---
             if (status === 'checked_in' || status === 'active') {
                 statusPanel.classList.add('bg-green');
                 statusText.textContent = 'WELCOME';
                 nameText.textContent = member.name;
                 dateText.textContent = 'Valid Until: ' + formatDate(member.membership_expiry_date);
                 dateText.classList.add('visible');
-                showMemberPhoto(member); // <--- Show Face
+                showMemberPhoto(member); 
             } 
             
-            // --- SCENARIO: CHECK OUT ---
+            // --- CHECK OUT ---
             else if (status === 'checked_out') {
                 statusPanel.classList.add('bg-blue');
                 statusText.textContent = 'THANK YOU FOR WORKING OUT';
                 if(member) {
                     nameText.textContent = member.name;
                     dateText.textContent = 'See you next time!';
-                    showMemberPhoto(member); // <--- Show Face
+                    showMemberPhoto(member);
                 } else {
                     nameText.textContent = 'Member';
                     dateText.textContent = '';
@@ -155,23 +156,32 @@
                 dateText.classList.add('visible');
             }
 
-            // --- SCENARIO: EXPIRED ---
+            // --- NEW: STRICT MODE NO PHOTO ---
+            else if (status === 'no_photo') {
+                statusPanel.classList.add('bg-orange'); // Use Orange to differentiate from Expired? Or use Red.
+                statusText.textContent = 'ACCESS DENIED';
+                // Specific message requested:
+                nameText.textContent = 'Member has no photo. Please update at the front desk.';
+                dateText.textContent = '';
+                // No photo to show, naturally
+            }
+
+            // --- EXPIRED ---
             else if (status === 'expired') {
                 statusPanel.classList.add('bg-red');
                 statusText.textContent = 'MEMBERSHIP EXPIRED';
                 nameText.textContent = member.name;
                 dateText.textContent = 'Expired: ' + formatDate(member.membership_expiry_date);
                 dateText.classList.add('visible');
-                showMemberPhoto(member); // <--- Show Face (Important for catching fraud!)
+                showMemberPhoto(member);
             } 
             
-            // --- SCENARIO: INVALID ---
+            // --- INVALID ---
             else if (status === 'not_found') {
                 statusPanel.classList.add('bg-red');
                 statusText.textContent = 'INVALID QR';
                 nameText.textContent = 'Member not found.';
                 dateText.textContent = '';
-                // No photo to show for invalid
             }
 
             void messageBox.offsetWidth; 
@@ -185,7 +195,7 @@
                     nameText.textContent = 'Please scan your provided QR code.';
                     dateText.textContent = '';
                     dateText.classList.remove('visible');
-                    memberPhoto.classList.remove('visible'); // Hide Photo
+                    memberPhoto.classList.remove('visible');
                     messageBox.classList.add('show');
                     
                     isOnCooldown = false; 
@@ -193,7 +203,7 @@
             }, 3000);
         }
 
-        // ... (Rest of scanner logic remains the same) ...
+        // ... (Rest of logic) ...
         const onScanSuccess = (result) => {
             if (isOnCooldown) return;
             isOnCooldown = true;

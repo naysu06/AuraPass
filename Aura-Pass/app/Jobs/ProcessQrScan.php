@@ -7,8 +7,9 @@ use App\Events\MemberCheckedOut;
 use App\Events\MemberScanFailed;
 use App\Models\Member;
 use App\Models\User; 
+use App\Models\GymSetting;
 use Filament\Notifications\Notification; 
-use Filament\Notifications\Actions\Action; // <--- 1. Import this for buttons
+use Filament\Notifications\Actions\Action; 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,9 +34,12 @@ class ProcessQrScan implements ShouldQueue
         $member = Member::where('unique_id', $this->qrData)->first();
         $admins = User::all(); 
 
-        // -----------------------------------------
-        // SCENARIO 1: MEMBER NOT FOUND (Invalid QR)
-        // -----------------------------------------
+        $settings = GymSetting::first();
+        $debounceSeconds = $settings ? $settings->kiosk_debounce_seconds : 10;
+        $strictMode = $settings ? $settings->strict_mode : false;
+        $autoCheckoutHours = $settings ? $settings->auto_checkout_hours : 12;
+
+        // 1. MEMBER NOT FOUND
         if (!$member) {
             event(new MemberScanFailed(null, 'not_found'));
 
@@ -49,9 +53,7 @@ class ProcessQrScan implements ShouldQueue
             return; 
         }
 
-        // -----------------------------------------
-        // SCENARIO 2: MEMBERSHIP EXPIRED
-        // -----------------------------------------
+        // 2. MEMBERSHIP EXPIRED
         if ($member->membership_expiry_date < now()->startOfDay()) {
             event(new MemberScanFailed($member, 'expired'));
             
@@ -59,7 +61,6 @@ class ProcessQrScan implements ShouldQueue
                 ->title('Entry Denied')
                 ->body("Expired Membership: {$member->name}")
                 ->danger() 
-                // <--- 2. Add Button to View Profile
                 ->actions([
                     Action::make('view')
                         ->label('View Profile')
@@ -72,19 +73,37 @@ class ProcessQrScan implements ShouldQueue
             return; 
         }
 
-        // -----------------------------------------
-        // VALID MEMBER FOUND - CHECK SESSION
-        // -----------------------------------------
+        // 3. STRICT MODE CHECK (Updated)
+        if ($strictMode && empty($member->profile_photo)) {
+            // <--- CHANGED: Send 'no_photo' instead of 'expired'
+            event(new MemberScanFailed($member, 'no_photo')); 
+
+            Notification::make()
+                ->title('Strict Mode Denied')
+                ->body("{$member->name} has no profile photo.")
+                ->danger()
+                ->actions([
+                    Action::make('upload')
+                        ->label('Take Photo')
+                        ->button()
+                        ->url("/admin/members/{$member->id}/edit", shouldOpenInNewTab: true),
+                ])
+                ->broadcast($admins)
+                ->sendToDatabase($admins);
+
+            return;
+        }
+
+        // ... (Rest of logic: Active Session check, Check In/Out) ...
         $activeSession = $member->checkIns()
             ->whereNull('check_out_at')
-            ->where('created_at', '>=', now()->subHours(12)) 
+            ->where('created_at', '>=', now()->subHours($autoCheckoutHours)) 
             ->latest()
             ->first();
 
         if ($activeSession) {
-            // --- LOGIC: CHECK OUT ---
-            
-            if (!$this->force && $activeSession->created_at->diffInMinutes(now()) < 2) {
+            // CHECK OUT
+            if (!$this->force && $activeSession->created_at->diffInSeconds(now()) < $debounceSeconds) {
                  event(new MemberScanFailed($member, 'ignored'));
                  return;
             }
@@ -99,7 +118,6 @@ class ProcessQrScan implements ShouldQueue
                 ->title('Member Left')
                 ->body("{$member->name} checked out.")
                 ->info() 
-                // <--- 3. Add Button to Verify Face
                 ->actions([
                     Action::make('verify')
                         ->label('Verify Face')
@@ -110,7 +128,7 @@ class ProcessQrScan implements ShouldQueue
                 ->sendToDatabase($admins);
 
         } else {
-            // --- LOGIC: CHECK IN ---
+            // CHECK IN
             $member->checkIns()->create();
 
             event(new MemberCheckedIn($member));
@@ -119,7 +137,6 @@ class ProcessQrScan implements ShouldQueue
                 ->title('Member Entered')
                 ->body("{$member->name} checked in.")
                 ->success() 
-                // <--- 4. Add Button to Verify Face
                 ->actions([
                     Action::make('verify')
                         ->label('Verify Face')

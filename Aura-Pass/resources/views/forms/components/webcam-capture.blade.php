@@ -2,21 +2,30 @@
     :component="$getFieldWrapperView()"
     :field="$field"
 >
-    <!-- Load Cropper.js Styles and Scripts locally for this component -->
+    <!-- Load Cropper.js Styles and Scripts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
+    {{-- 1. FETCH SETTINGS FROM DATABASE --}}
+    @php
+        $settings = \App\Models\GymSetting::first();
+        // Default to true (mirrored) if settings haven't been saved yet
+        $shouldMirror = $settings ? $settings->camera_mirror : true;
+    @endphp
+
     <div x-data="{
         stream: null,
-        image: $wire.entangle('{{ $getStatePath() }}'), // Final cropped image sent to backend
-        rawImage: null, // Temporary raw capture from webcam
+        image: $wire.entangle('{{ $getStatePath() }}'),
+        rawImage: null,
         cameraOptions: [],
         selectedCamera: '',
         cropper: null,
-        mode: 'camera', // States: 'camera', 'cropping', 'preview'
+        mode: 'camera', 
         
+        // 2. PASS PHP SETTING TO JAVASCRIPT
+        mirror: @js($shouldMirror),
+
         init() {
-            // Check if we already have an image (Edit mode)
             if (this.image) {
                 this.mode = 'preview';
             } else {
@@ -29,7 +38,6 @@
                 .then(devices => {
                     this.cameraOptions = devices.filter(device => device.kind === 'videoinput');
                     if (this.cameraOptions.length > 0) {
-                        // Attempt to find external camera first, else default
                         this.selectedCamera = this.cameraOptions[this.cameraOptions.length - 1].deviceId;
                         this.startCamera();
                     }
@@ -45,7 +53,7 @@
             navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     deviceId: { exact: this.selectedCamera },
-                    width: { ideal: 1280 }, // Higher res for better cropping
+                    width: { ideal: 1280 }, 
                     height: { ideal: 720 }
                 } 
             })
@@ -63,22 +71,21 @@
             canvas.height = this.$refs.video.videoHeight;
             const ctx = canvas.getContext('2d');
             
-            // Mirror logic for capture
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
+            // 3. CONDITIONAL MIRRORING LOGIC
+            if (this.mirror) {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+
             ctx.drawImage(this.$refs.video, 0, 0);
             
-            // 1. Save raw image for cropping
             this.rawImage = canvas.toDataURL('image/jpeg', 1.0);
-            
-            // 2. Switch to cropping mode
             this.mode = 'cropping';
             
-            // 3. Initialize Cropper (Wait for DOM to update with rawImage)
             this.$nextTick(() => {
                 if (this.cropper) this.cropper.destroy();
                 this.cropper = new Cropper(this.$refs.cropImage, {
-                    aspectRatio: 1, // Force Square (1:1) for profile pics
+                    aspectRatio: 1, 
                     viewMode: 1,
                     autoCropArea: 0.8,
                 });
@@ -86,13 +93,11 @@
         },
 
         saveCrop() {
-            // Get cropped result
             this.image = this.cropper.getCroppedCanvas({
-                width: 500,  // Resize to reasonable dimensions
+                width: 500,  
                 height: 500
             }).toDataURL('image/jpeg', 0.9);
 
-            // Cleanup
             this.cropper.destroy();
             this.cropper = null;
             this.mode = 'preview';
@@ -110,12 +115,10 @@
         }
     }">
         
-        <!-- WRAPPER -->
         <div class="max-w-sm mx-auto space-y-3">
             
-            <!-- 1. CAMERA MODE -->
+            <!-- CAMERA MODE -->
             <div x-show="mode === 'camera'">
-                <!-- UPDATED: Added dark mode classes to the select -->
                 <select 
                     x-model="selectedCamera" 
                     @change="startCamera()" 
@@ -129,8 +132,15 @@
                     </template>
                 </select>
 
-                <div class="relative w-full overflow-hidden bg-black rounded-lg aspect-[4/3] border-2 border-gray-300 shadow-md">
-                    <video x-ref="video" class="w-full h-full object-cover" style="transform: scaleX(-1);" autoplay playsinline></video>
+                <div class="relative w-full overflow-hidden bg-black rounded-lg aspect-[4/3] border-2 border-gray-300 dark:border-gray-600 shadow-md">
+                    <!-- 4. DYNAMIC STYLE FOR VIDEO PREVIEW -->
+                    <video 
+                        x-ref="video" 
+                        class="w-full h-full object-cover" 
+                        style="transform: scaleX({{ $shouldMirror ? -1 : 1 }});" 
+                        autoplay 
+                        playsinline
+                    ></video>
                 </div>
 
                 <button type="button" @click="capture()" class="w-full mt-3 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center gap-2">
@@ -139,10 +149,9 @@
                 </button>
             </div>
 
-            <!-- 2. CROPPING MODE -->
+            <!-- CROPPING MODE -->
             <div x-show="mode === 'cropping'">
                 <div class="relative w-full bg-black rounded-lg overflow-hidden border-2 border-blue-500">
-                    <!-- Image to be cropped -->
                     <img x-ref="cropImage" :src="rawImage" class="block max-w-full">
                 </div>
                 
@@ -156,7 +165,7 @@
                 </div>
             </div>
 
-            <!-- 3. PREVIEW MODE (Final Result) -->
+            <!-- PREVIEW MODE -->
             <div x-show="mode === 'preview'">
                 <div class="relative w-full overflow-hidden bg-black rounded-lg aspect-square border-2 border-green-500 shadow-md">
                     <img :src="image" class="w-full h-full object-contain">

@@ -6,6 +6,7 @@ use App\Models\Member;
 use App\Mail\MembershipExpiringEmail;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
+use App\Models\GymSetting;
 
 class SendExpirationReminders extends Command
 {
@@ -18,6 +19,14 @@ class SendExpirationReminders extends Command
 
     public function handle()
     {
+        
+        // <--- NEW: Check Settings First --->
+        $settings = GymSetting::first();
+        if ($settings && !$settings->email_reminders_enabled) {
+            $this->info("Email reminders are disabled in Gym Settings. Skipping.");
+            return;
+        }
+
         // 1. Calculate the specific target dates
         $inSevenDays = now()->addDays(7)->toDateString();
         $inThreeDays = now()->addDays(3)->toDateString();
