@@ -23,6 +23,7 @@ use App\Filament\Widgets\ExpiringMembers;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\PeakHoursChart;
 use App\Filament\Widgets\DailyVisitsChart;
+use App\Filament\Widgets\DataAnalyticsHeader;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -42,14 +43,15 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Pages\Dashboard::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            //->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 //Widgets\AccountWidget::class, // User account summary
-                ExpiringMembers::class,
                 StatsOverview::class,
-                PeakHoursChart::class,
-                DailyVisitsChart::class,
                 AccessLog::class,
+                ExpiringMembers::class,
+                DataAnalyticsHeader::class, // Custom header widget
+                DailyVisitsChart::class,
+                PeakHoursChart::class,
                 //Widgets\FilamentInfoWidget::class, // Documentation links
             ])
             ->middleware([

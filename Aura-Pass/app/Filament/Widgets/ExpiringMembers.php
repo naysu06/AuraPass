@@ -11,7 +11,6 @@ use Filament\Notifications\Notification;
 
 class ExpiringMembers extends BaseWidget
 {
-    protected static ?int $sort = 1; // Position it after AccessLog
     
     protected static ?string $heading = 'Membership Expiring Soon';
 
@@ -45,7 +44,7 @@ class ExpiringMembers extends BaseWidget
                     )
                     ->getStateUsing(fn () => 'Expiring'),
             ])
-            ->paginated(false) 
+            ->paginated([3]) 
             ->recordUrl(
                 fn (Member $record): string => route('filament.admin.resources.members.edit', ['record' => $record]),
             )

@@ -9,7 +9,6 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class AccessLog extends BaseWidget
 {
-    protected static ?int $sort = 0;
     
     protected static ?string $heading = 'Live Log Feed';
 
@@ -22,7 +21,7 @@ class AccessLog extends BaseWidget
             ->poll(2) // Refresh every 2 seconds
             ->query(
                 // Show last 3 events
-                CheckIn::query()->latest()->limit(3)
+                CheckIn::query()->latest()->limit(4)
             )
             ->columns([
                 // 1. Member Name

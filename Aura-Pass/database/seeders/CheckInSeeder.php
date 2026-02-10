@@ -6,7 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\CheckIn;
 use App\Models\Member;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Schema; // Needed for safe truncation
+use Illuminate\Support\Facades\Schema;
 
 class CheckInSeeder extends Seeder
 {
@@ -24,8 +24,7 @@ class CheckInSeeder extends Seeder
         $types = ['regular', 'discount', 'promo'];
 
         // --- GROUP A: THE URGENT ONES (Expiring in 1-3 days) ---
-        // Reduced to 2
-        foreach(range(1, 2) as $i) {
+        foreach(range(1, 12) as $i) {
             $members[] = Member::factory()->create([
                 'name' => "Urgent User $i", 
                 'created_at' => Carbon::now()->subMonths(rand(3, 12)), 
@@ -35,9 +34,10 @@ class CheckInSeeder extends Seeder
         }
 
         // --- GROUP B: THE WARNING ONES (Expiring in 4-7 days) ---
-        // Reduced to 1
+        // Reduced to 1 (Part of the "Only 3 Expiring" request)
         foreach(range(1, 1) as $i) {
             $members[] = Member::factory()->create([
+                'name' => "Warning User $i", 
                 'created_at' => Carbon::now()->subMonths(rand(2, 6)),
                 'membership_expiry_date' => Carbon::now()->addDays(rand(4, 7)),
                 'membership_type' => 'regular',
@@ -55,7 +55,6 @@ class CheckInSeeder extends Seeder
         }
 
         // --- GROUP D: THE FRESH BLOOD (Joined this week) ---
-        // Often on Promo
         foreach(range(1, 5) as $i) {
             $members[] = Member::factory()->create([
                 'created_at' => Carbon::now()->subDays(rand(0, 6)),
@@ -64,37 +63,29 @@ class CheckInSeeder extends Seeder
             ])->id;
         }
 
-        // --- GROUP E: THE REGULARS (Healthy expiry dates) ---
-        // Increased to 37 to maintain 50 Total Members
-        // Mix of types
+        // --- GROUP E: THE REGULARS ---
+        // Adjusted to 37 to keep total at 50
         foreach(range(1, 37) as $i) {
-            // weighted distribution: 60% regular, 30% discount, 10% promo
             $rand = rand(1, 100);
-            if ($rand <= 60) {
-                $type = 'regular';
-            } elseif ($rand <= 90) {
-                $type = 'discount';
-            } else {
-                $type = 'promo';
-            }
+            $type = ($rand <= 60) ? 'regular' : (($rand <= 90) ? 'discount' : 'promo');
 
             $members[] = Member::factory()->create([
-                'created_at' => Carbon::now()->subDays(rand(20, 300)), // Varied join dates for realism
+                'created_at' => Carbon::now()->subDays(rand(20, 300)), 
                 'membership_expiry_date' => Carbon::now()->addMonths(rand(1, 6)),
                 'membership_type' => $type,
             ])->id;
         }
 
-        $this->command->info('Members generated. Starting Check-in Simulation (Furukawa Profile)...');
+        $this->command->info('Members generated. Starting Realistic Check-in Simulation...');
 
         // ---------------------------------------------------------
-        // CHECK-IN SIMULATION
+        // CHECK-IN SIMULATION (Realistic Patterns)
         // ---------------------------------------------------------
         
         $daysToSeed = 60; 
-        $targetTotal = 2000; 
+        $targetTotal = 3000; 
         
-        // Furukawa Gym Profile (La Trinidad)
+        // Furukawa Gym Profile (Peak at 6PM)
         $hourWeights = [
             0 => 0,  1 => 0,  2 => 0,  3 => 0,  4 => 0,  5 => 2,   
             6 => 20, 7 => 35, 8 => 25, 9 => 15, 10 => 10, 11 => 10, 
@@ -110,31 +101,41 @@ class CheckInSeeder extends Seeder
         $totalInserted = 0;
         
         for ($i = $daysToSeed; $i >= 0; $i--) {
-            
             $date = Carbon::now()->subDays($i);
-            $isWeekend = $date->isWeekend();
+            $dayOfWeek = $date->dayOfWeek; // 0 (Sun) - 6 (Sat)
             
-            $growthFactor = ($daysToSeed - $i) * 0.2; 
-            $baseVisitors = $isWeekend ? rand(20, 30) : rand(30, 45);
-            $totalVisitors = ceil($baseVisitors + $growthFactor);
+            // --- DAILY VOLUME LOGIC ---
+            // Monday (1): Busiest day of the week
+            // Midweek (2-4): Steady
+            // Friday (5): Drop off
+            // Weekend (0, 6): Low volume
+            if ($dayOfWeek == 1) {
+                $baseVisitors = rand(45, 55); // Monday Surge
+            } elseif ($dayOfWeek == 5) {
+                $baseVisitors = rand(30, 40); // Friday Lull
+            } elseif ($date->isWeekend()) {
+                $baseVisitors = rand(15, 25); // Weekend
+            } else {
+                $baseVisitors = rand(35, 45); // Tue-Thu
+            }
+
+            // Trend: Gym is getting popular (+10-15% over 2 months)
+            $growth = ($daysToSeed - $i) * 0.2; 
+            
+            $totalVisitors = ceil($baseVisitors + $growth);
 
             for ($v = 0; $v < $totalVisitors; $v++) {
                 if ($totalInserted >= $targetTotal) break 2; 
 
                 $hour = $this->getWeightedRandomHour($hourWeights);
-                
                 $checkInTime = $date->copy()->setTime($hour, rand(0, 59), rand(0, 59));
                 
                 $minDuration = ($hour < 9) ? 45 : 60;
                 $maxDuration = ($hour < 9) ? 75 : 120;
-                
                 $checkOutTime = $checkInTime->copy()->addMinutes(rand($minDuration, $maxDuration));
 
-                if ($checkOutTime->isFuture()) {
-                    $checkOutTime = null; 
-                }
+                if ($checkOutTime->isFuture()) $checkOutTime = null; 
 
-                // Pick a random member ID from the ones we just created
                 $randomMemberId = $members[array_rand($members)];
 
                 $buffer[] = [
@@ -153,11 +154,9 @@ class CheckInSeeder extends Seeder
             }
         }
 
-        if (!empty($buffer)) {
-            CheckIn::insert($buffer);
-        }
+        if (!empty($buffer)) CheckIn::insert($buffer);
         
-        $this->command->info("Done! Seeded {$totalInserted} visits across 50 realistic member profiles.");
+        $this->command->info("Done! Seeded {$totalInserted} visits with Monday Surges and Weekend Lulls.");
     }
 
     private function getWeightedRandomHour(array $weights): int

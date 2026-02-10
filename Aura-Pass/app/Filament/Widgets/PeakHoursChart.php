@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 class PeakHoursChart extends ChartWidget
 {
     protected static ?string $heading = 'Peak Hours';
-    protected static ?int $sort = 2;
 
     /**
      * 1. Define the filter options.
