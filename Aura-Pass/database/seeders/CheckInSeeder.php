@@ -24,7 +24,7 @@ class CheckInSeeder extends Seeder
         $types = ['regular', 'discount', 'promo'];
 
         // --- GROUP A: THE URGENT ONES (Expiring in 1-3 days) ---
-        foreach(range(1, 12) as $i) {
+        foreach(range(1, 2) as $i) {
             $members[] = Member::factory()->create([
                 'name' => "Urgent User $i", 
                 'created_at' => Carbon::now()->subMonths(rand(3, 12)), 
@@ -34,7 +34,6 @@ class CheckInSeeder extends Seeder
         }
 
         // --- GROUP B: THE WARNING ONES (Expiring in 4-7 days) ---
-        // Reduced to 1 (Part of the "Only 3 Expiring" request)
         foreach(range(1, 1) as $i) {
             $members[] = Member::factory()->create([
                 'name' => "Warning User $i", 
@@ -45,7 +44,6 @@ class CheckInSeeder extends Seeder
         }
 
         // --- GROUP C: THE EXPIRED ONES (Expired 1-10 days ago) ---
-        // Kept at 5 to test Access Denied functionality
         foreach(range(1, 5) as $i) {
             $members[] = Member::factory()->create([
                 'created_at' => Carbon::now()->subMonths(rand(6, 12)),
@@ -64,7 +62,6 @@ class CheckInSeeder extends Seeder
         }
 
         // --- GROUP E: THE REGULARS ---
-        // Adjusted to 37 to keep total at 50
         foreach(range(1, 37) as $i) {
             $rand = rand(1, 100);
             $type = ($rand <= 60) ? 'regular' : (($rand <= 90) ? 'discount' : 'promo');
@@ -83,6 +80,7 @@ class CheckInSeeder extends Seeder
         // ---------------------------------------------------------
         
         $daysToSeed = 60; 
+        // <--- FIX: Increased limit to 3000 to ensure we reach "Today"
         $targetTotal = 3000; 
         
         // Furukawa Gym Profile (Peak at 6PM)
@@ -100,15 +98,12 @@ class CheckInSeeder extends Seeder
         $batchSize = 500; 
         $totalInserted = 0;
         
+        // Loop backwards from 60 days ago until today
         for ($i = $daysToSeed; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
             $dayOfWeek = $date->dayOfWeek; // 0 (Sun) - 6 (Sat)
             
             // --- DAILY VOLUME LOGIC ---
-            // Monday (1): Busiest day of the week
-            // Midweek (2-4): Steady
-            // Friday (5): Drop off
-            // Weekend (0, 6): Low volume
             if ($dayOfWeek == 1) {
                 $baseVisitors = rand(45, 55); // Monday Surge
             } elseif ($dayOfWeek == 5) {
@@ -116,11 +111,11 @@ class CheckInSeeder extends Seeder
             } elseif ($date->isWeekend()) {
                 $baseVisitors = rand(15, 25); // Weekend
             } else {
-                $baseVisitors = rand(35, 45); // Tue-Thu
+                $baseVisitors = rand(35, 45); // Midweek
             }
 
-            // Trend: Gym is getting popular (+10-15% over 2 months)
-            $growth = ($daysToSeed - $i) * 0.2; 
+            // Trend: Gym is getting popular
+            $growth = ($daysToSeed - $i) * 0.3; 
             
             $totalVisitors = ceil($baseVisitors + $growth);
 
@@ -156,7 +151,7 @@ class CheckInSeeder extends Seeder
 
         if (!empty($buffer)) CheckIn::insert($buffer);
         
-        $this->command->info("Done! Seeded {$totalInserted} visits with Monday Surges and Weekend Lulls.");
+        $this->command->info("Done! Seeded {$totalInserted} visits. Last 7 days are fully populated.");
     }
 
     private function getWeightedRandomHour(array $weights): int
