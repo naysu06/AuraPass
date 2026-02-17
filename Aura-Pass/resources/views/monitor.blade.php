@@ -10,7 +10,6 @@
     @vite('resources/css/app.css') 
     
     <style>
-        /* ... (Your existing styles) ... */
         body, html { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; background-color: #111827; }
         .kiosk-layout { display: flex; width: 100%; height: 100%; }
         #status-panel { flex: 1.5; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2rem; color: white; transition: background-color 0.5s ease; }
@@ -22,23 +21,18 @@
         #date-text { font-size: 1.5rem; font-weight: 400; margin-top: 1rem; opacity: 0.9; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 20px; display: none; }
         #date-text.visible { display: inline-block; }
 
-        /* --- COLORS --- */
+        /* COLORS */
         .bg-default { background-color: #374151; } 
         .bg-green { background-color: #10B981; } 
         .bg-red { background-color: #EF4444; } 
         .bg-blue { background-color: #3B82F6; } 
-        /* Added Orange for Strict Mode (Optional, usually Red is fine too) */
+        /* Orange for Strict Mode Warning */
         .bg-orange { background-color: #F59E0B; }
 
-        /* --- MEMBER PHOTO STYLE --- */
+        /* PHOTO STYLE */
         #member-photo {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%; 
-            object-fit: cover;
-            border: 4px solid white;
-            margin-bottom: 20px;
-            display: none; 
+            width: 150px; height: 150px; border-radius: 50%; object-fit: cover;
+            border: 4px solid white; margin-bottom: 20px; display: none; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
         #member-photo.visible { display: block; }
@@ -53,7 +47,7 @@
     <div class="kiosk-layout">
         <div id="status-panel" class="bg-default">
             <div id="message" class="show flex flex-col items-center"> 
-                <!-- Image Element -->
+                <!-- Member Photo -->
                 <img id="member-photo" src="" alt="Member Face" />
 
                 <h1 id="status-text">WELCOME TO QUADS-FURUKAWA GYM</h1>
@@ -76,7 +70,8 @@
     <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.11.2/dist/echo.iife.js"></script>
     <script type="module">
-        import QrScanner from 'https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js';
+        // Use the latest version to fix the Canvas Performance warning
+        import QrScanner from 'https://cdn.jsdelivr.net/npm/qr-scanner@1.4.2/qr-scanner.min.js';
 
         const statusPanel = document.getElementById('status-panel');
         const messageBox = document.getElementById('message');
@@ -91,6 +86,27 @@
         let qrScanner;
         let isOnCooldown = false; 
 
+        // --- WAKE LOCK (Keeps screen on) ---
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Wake Lock is active');
+                wakeLock.addEventListener('release', () => {
+                    console.log('Wake Lock was released');
+                });
+            } catch (err) {
+                console.error(`${err.name}, ${err.message}`);
+            }
+        }
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+        requestWakeLock();
+        // -----------------------------------
+
         window.Echo = new Echo({
             broadcaster: 'pusher',
             key: '{{ config("broadcasting.connections.pusher.key") }}',
@@ -99,29 +115,24 @@
         });
 
         window.Echo.channel('monitor-screen')
-        .listen('.member.checked_in', (e) => {
-            updateStatusUI('checked_in', e.member);
-        })
-        .listen('.member.checked_out', (e) => {
-            updateStatusUI('checked_out', e.member);
-        })
-        .listen('.member.scan_failed', (e) => {
-            updateStatusUI(e.reason, e.member);
-        });
+        .listen('.member.checked_in', (e) => updateStatusUI('checked_in', e.member))
+        .listen('.member.checked_out', (e) => updateStatusUI('checked_out', e.member))
+        .listen('.member.scan_failed', (e) => updateStatusUI(e.reason, e.member));
 
         function updateStatusUI(status, member) {
+            // 1. Check Debounce first
             if (status === 'ignored') {
                 console.log('Debounce: Scan ignored.');
                 isOnCooldown = false; 
                 return; 
             }
 
+            // 2. Reset UI
             statusPanel.className = ''; 
             messageBox.classList.remove('show');
             dateText.classList.remove('visible');
             memberPhoto.classList.remove('visible'); 
 
-            // Helper to show photo if it exists
             const showMemberPhoto = (mem) => {
                 if (mem && mem.profile_photo) {
                     memberPhoto.src = '/storage/' + mem.profile_photo;
@@ -156,14 +167,12 @@
                 dateText.classList.add('visible');
             }
 
-            // --- NEW: STRICT MODE NO PHOTO ---
+            // --- NEW: STRICT MODE (NO PHOTO) ---
             else if (status === 'no_photo') {
-                statusPanel.classList.add('bg-orange'); // Use Orange to differentiate from Expired? Or use Red.
+                statusPanel.classList.add('bg-orange');
                 statusText.textContent = 'ACCESS DENIED';
-                // Specific message requested:
-                nameText.textContent = 'Member has no photo. Please update at the front desk.';
+                nameText.textContent = 'Member has no photo. Please update your photo at the front desk.';
                 dateText.textContent = '';
-                // No photo to show, naturally
             }
 
             // --- EXPIRED ---
@@ -184,9 +193,11 @@
                 dateText.textContent = '';
             }
 
+            // 3. Trigger Animation
             void messageBox.offsetWidth; 
             messageBox.classList.add('show');
 
+            // 4. Auto-Reset Timer (3 Seconds)
             setTimeout(() => {
                 messageBox.classList.remove('show');
                 setTimeout(() => { 
@@ -203,7 +214,6 @@
             }, 3000);
         }
 
-        // ... (Rest of logic) ...
         const onScanSuccess = (result) => {
             if (isOnCooldown) return;
             isOnCooldown = true;

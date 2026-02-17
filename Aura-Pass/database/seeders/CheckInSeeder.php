@@ -24,7 +24,7 @@ class CheckInSeeder extends Seeder
         $types = ['regular', 'discount', 'promo'];
 
         // --- GROUP A: THE URGENT ONES (Expiring in 1-3 days) ---
-        foreach(range(1, 2) as $i) {
+        foreach(range(1, 6) as $i) {
             $members[] = Member::factory()->create([
                 'name' => "Urgent User $i", 
                 'created_at' => Carbon::now()->subMonths(rand(3, 12)), 
