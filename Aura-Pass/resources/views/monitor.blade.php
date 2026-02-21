@@ -7,6 +7,13 @@
     
     <title>Gym Check-in Kiosk</title>
     
+    <script>
+        window.kioskConfig = {
+            pusherKey: '{{ config("broadcasting.connections.pusher.key") }}',
+            pusherCluster: '{{ config("broadcasting.connections.pusher.options.cluster") }}'
+        };
+    </script>
+
     @vite(['resources/css/app.css', 'resources/js/monitor.js'])
     
     <style>
@@ -26,7 +33,6 @@
         .bg-green { background-color: #10B981; } 
         .bg-red { background-color: #EF4444; } 
         .bg-blue { background-color: #3B82F6; } 
-        /* Orange for Strict Mode Warning */
         .bg-orange { background-color: #F59E0B; }
 
         /* PHOTO STYLE */
@@ -39,10 +45,29 @@
 
         #scanner-ui { width: 100%; max-width: 600px; background: #374151; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         #camera-select { color: black; width: 100%; padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 1rem; }
-        video { width: 100%; height: auto; border-radius: 0.25rem; transform: scaleX(-1) !important; }
+        
+        /* FIX: Ensure video tag fills the container */
+        video { width: 100%; height: auto; border-radius: 0.25rem; display: block; }
     </style>
 </head>
 <body>
+
+    <!-- 1. FETCH SETTINGS FOR MIRRORING -->
+    @php
+        $settings = \App\Models\GymSetting::first();
+        // Default to true (mirrored) if not set
+        $mirror = $settings ? $settings->camera_mirror : true;
+    @endphp
+
+    <!-- FLOATING CLOCK WIDGET -->
+    <div class="fixed top-6 right-8 z-50 text-right pointer-events-none">
+        <div id="clock-time" class="text-5xl font-bold text-white font-mono tracking-wider" style="text-shadow: 2px 2px 8px rgba(0,0,0,0.6);">
+            --:--
+        </div>
+        <div id="clock-date" class="text-lg text-gray-200 font-semibold tracking-wide uppercase mt-1" style="text-shadow: 1px 1px 4px rgba(0,0,0,0.6);">
+            ---
+        </div>
+    </div>
 
     <div class="kiosk-layout">
         <div id="status-panel" class="bg-default">
@@ -62,16 +87,15 @@
             <div id="scanner-ui">
                 <label for="camera-select" class="block text-sm font-medium text-white mb-2">Select Camera:</label>
                 <select id="camera-select"></select>
-                <video id="qr-video" class="mt-4"></video>
+                
+                <!-- 2. APPLY INVERTED DYNAMIC MIRRORING -->
+                <!-- Swapped logic: 1 (Normal) when True, -1 (Flipped) when False to correct the opposite behavior -->
+                <div class="mt-4" style="transform: scaleX({{ $mirror ? 1 : -1 }}); display: flex; width: 100%; position: relative;">
+                    <video id="qr-video"></video>
+                </div>
+
             </div>
         </div>
     </div>
-
-    <script>
-        window.kioskConfig = {
-            pusherKey: '{{ config("broadcasting.connections.pusher.key") }}',
-            pusherCluster: '{{ config("broadcasting.connections.pusher.options.cluster") }}'
-        };
-    </script>
 </body>
 </html>

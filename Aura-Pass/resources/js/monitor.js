@@ -4,7 +4,10 @@ import Pusher from 'pusher-js';
 
 window.Pusher = Pusher;
 
-// Initialize Echo
+// --- CONFIGURATION ---
+const TARGET_CAMERA_NAME = 'WEB CAM'; 
+// ---------------------
+
 window.Echo = new Echo({
     broadcaster: 'pusher',
     key: window.kioskConfig.pusherKey,
@@ -35,6 +38,26 @@ document.addEventListener('visibilitychange', async () => {
 });
 requestWakeLock();
 
+// --- 1. NEW: KEEP ALIVE AUDIO HACK ---
+// Prevents background throttling when Admin clicks away
+function initKeepAlive() {
+    const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQQAAAAAAAAAAAA=");
+    silentAudio.loop = true;
+    silentAudio.volume = 0.01; 
+
+    const startAudio = () => {
+        silentAudio.play().then(() => {
+            console.log('🔊 Keep-Alive Audio Active');
+            document.removeEventListener('click', startAudio);
+            document.removeEventListener('keydown', startAudio);
+        }).catch(err => {
+            console.warn('Audio blocked, waiting for interaction...', err);
+        });
+    };
+
+    document.addEventListener('click', startAudio);
+    document.addEventListener('keydown', startAudio);
+}
 
 // --- DOM ELEMENTS & LOGIC ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -46,6 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const memberPhoto = document.getElementById('member-photo');
     const videoElem = document.getElementById('qr-video');
     const cameraSelect = document.getElementById('camera-select');
+
+    // Initialize Keep Alive
+    initKeepAlive();
 
     // --- ECHO LISTENERS ---
     window.Echo.channel('monitor-screen')
@@ -75,7 +101,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // --- STATUS LOGIC ---
         if (status === 'checked_in' || status === 'active') {
             statusPanel.classList.add('bg-green');
             statusText.textContent = 'WELCOME';
@@ -114,11 +139,9 @@ document.addEventListener('DOMContentLoaded', () => {
             dateText.textContent = '';
         }
 
-        // Animation
         void messageBox.offsetWidth;
         messageBox.classList.add('show');
 
-        // Reset Timer
         setTimeout(() => {
             messageBox.classList.remove('show');
             setTimeout(() => {
@@ -134,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
-    // --- SCANNER SETUP ---
     const onScanSuccess = (result) => {
         if (isOnCooldown) return;
         isOnCooldown = true;
@@ -153,38 +175,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    function setupCameraDropdown(activeDeviceId) {
-        QrScanner.listCameras(true).then(cameras => {
-            cameraSelect.innerHTML = '';
-            cameras.forEach(camera => {
-                const option = document.createElement('option');
-                option.value = camera.id;
-                option.innerHTML = camera.label;
-                cameraSelect.appendChild(option);
-            });
-            if (activeDeviceId) cameraSelect.value = activeDeviceId;
+    // --- SETUP CAMERAS & AUTO-SELECT BY NAME ---
+    function setupCameraDropdown(activeDeviceId, allCameras) {
+        cameraSelect.innerHTML = '';
+        allCameras.forEach(camera => {
+            const option = document.createElement('option');
+            option.value = camera.id;
+            option.innerHTML = camera.label;
+            cameraSelect.appendChild(option);
         });
+        if (activeDeviceId) cameraSelect.value = activeDeviceId;
     }
 
-    function startScanner(deviceId) {
+    async function startScanner(manualDeviceId = null) {
         if (qrScanner) {
             qrScanner.stop();
             qrScanner.destroy();
             qrScanner = null;
         }
+
+        const cameras = await QrScanner.listCameras(true);
+        let selectedId = manualDeviceId;
+        
+        console.log("📷 DETECTED CAMERAS:", cameras.map(c => c.label));
+
+        if (!selectedId) {
+            const preferredCam = cameras.find(c => c.label.includes(TARGET_CAMERA_NAME));
+            if (preferredCam) {
+                console.log(`✅ Auto-selected: ${preferredCam.label}`);
+                selectedId = preferredCam.id;
+            } else {
+                console.warn(`❌ Could not find camera named "${TARGET_CAMERA_NAME}". Using default.`);
+            }
+        }
+
         setTimeout(() => {
             qrScanner = new QrScanner(
                 videoElem,
                 onScanSuccess,
                 {
-                    preferredCamera: deviceId || 'environment',
+                    preferredCamera: selectedId || 'environment',
                     highlightScanRegion: true,
                     highlightCodeOutline: true,
-                    maxScansPerSecond: 25, // Lowered slightly to save CPU
+                    maxScansPerSecond: 25, 
                 }
             );
+            
             qrScanner.start().then(() => {
-                setupCameraDropdown(deviceId);
+                setupCameraDropdown(selectedId || qrScanner._activeCameraId, cameras);
             });
         }, 50);
     }
@@ -194,8 +232,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    // Start scanner
-    startScanner();
+    function startClock() {
+        const timeElem = document.getElementById('clock-time');
+        const dateElem = document.getElementById('clock-date');
+        
+        function tick() {
+            const now = new Date();
+            timeElem.textContent = now.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: true 
+            });
+            dateElem.textContent = now.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+        setInterval(tick, 1000);
+        tick(); 
+    }
+
+    // Initialize
+    startClock();
+    startScanner(); 
     cameraSelect.addEventListener('change', () => startScanner(cameraSelect.value));
 });
 

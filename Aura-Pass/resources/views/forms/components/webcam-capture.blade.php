@@ -6,10 +6,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-    {{-- 1. FETCH SETTINGS FROM DATABASE --}}
+    {{-- Fetch settings from database for Mirroring preference --}}
     @php
         $settings = \App\Models\GymSetting::first();
-        // Default to true (mirrored) if settings haven't been saved yet
         $shouldMirror = $settings ? $settings->camera_mirror : true;
     @endphp
 
@@ -22,8 +21,10 @@
         cropper: null,
         mode: 'camera', 
         
-        // 2. PASS PHP SETTING TO JAVASCRIPT
         mirror: @js($shouldMirror),
+        
+        // CONFIGURATION: Target Camera Name for Admin Registration
+        targetName: 'HD User Facing', // Adjust this to match the actual camera label for admin registration
 
         init() {
             if (this.image) {
@@ -37,8 +38,20 @@
             navigator.mediaDevices.enumerateDevices()
                 .then(devices => {
                     this.cameraOptions = devices.filter(device => device.kind === 'videoinput');
+                    
                     if (this.cameraOptions.length > 0) {
-                        this.selectedCamera = this.cameraOptions[this.cameraOptions.length - 1].deviceId;
+                        // 1. Try to find the specific Admin Camera
+                        const preferredCam = this.cameraOptions.find(c => c.label.includes(this.targetName));
+                        
+                        if (preferredCam) {
+                            console.log('Auto-selected Admin Camera:', preferredCam.label);
+                            this.selectedCamera = preferredCam.deviceId;
+                        } else {
+                            // 2. Fallback: Use the last camera found (usually external USB)
+                            console.log('Target camera not found, using default.');
+                            this.selectedCamera = this.cameraOptions[this.cameraOptions.length - 1].deviceId;
+                        }
+                        
                         this.startCamera();
                     }
                 });
@@ -71,7 +84,7 @@
             canvas.height = this.$refs.video.videoHeight;
             const ctx = canvas.getContext('2d');
             
-            // 3. CONDITIONAL MIRRORING LOGIC
+            // Apply Mirroring if enabled in settings
             if (this.mirror) {
                 ctx.translate(canvas.width, 0);
                 ctx.scale(-1, 1);
@@ -133,7 +146,7 @@
                 </select>
 
                 <div class="relative w-full overflow-hidden bg-black rounded-lg aspect-[4/3] border-2 border-gray-300 dark:border-gray-600 shadow-md">
-                    <!-- 4. DYNAMIC STYLE FOR VIDEO PREVIEW -->
+                    <!-- Dynamic style for mirroring preview based on settings -->
                     <video 
                         x-ref="video" 
                         class="w-full h-full object-cover" 
