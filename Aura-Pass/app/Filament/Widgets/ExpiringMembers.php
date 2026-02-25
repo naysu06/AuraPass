@@ -6,23 +6,27 @@ use App\Models\Member;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Filament\Forms\Components\TextInput; // <--- Import this
+use Filament\Forms\Components\TextInput; 
 use Filament\Notifications\Notification;
 
 class ExpiringMembers extends BaseWidget
 {
-    
     protected static ?string $heading = 'Membership Expiring Soon';
 
-    // Polling allows the table to refresh if someone renews elsewhere
     protected static ?string $pollingInterval = '60s';
+
+    protected function getExtraAttributes(): array
+    {
+        return [
+            'class' => 'custom-fixed-table',
+        ];
+    }
 
     public function table(Table $table): Table
     {
         return $table
             ->query(
                 Member::query()
-                    // <--- FIX: Use startOfDay() to include members expiring TODAY
                     ->where('membership_expiry_date', '>=', now()->startOfDay()) 
                     ->where('membership_expiry_date', '<=', now()->addDays(7)->endOfDay()) 
                     ->orderBy('membership_expiry_date', 'asc') 
@@ -54,15 +58,13 @@ class ExpiringMembers extends BaseWidget
                     ->color('primary')
                     ->iconButton()
                     ->tooltip('Renew Membership')
-                    
-                    // 1. DEFINE THE MODAL FORM
                     ->form([
                         TextInput::make('months')
                             ->label('Duration to Add')
-                            ->numeric()      // Adds up/down arrows
-                            ->default(1)     // Default to 1 month
-                            ->minValue(1)    // Cannot be 0
-                            ->maxValue(12)   // Optional limit
+                            ->numeric()
+                            ->default(1)
+                            ->minValue(1)
+                            ->maxValue(12)
                             ->suffix('Month(s)')
                             ->required()
                             ->autofocus(),
@@ -70,14 +72,9 @@ class ExpiringMembers extends BaseWidget
                     ->modalHeading('Renew Subscription')
                     ->modalDescription(fn ($record) => "Extend membership for {$record->name}?")
                     ->modalSubmitActionLabel('Confirm Renewal')
-                    
-                    // 2. HANDLE THE DATA
                     ->action(function (Member $record, array $data) {
                         $monthsToAdd = (int) $data['months'];
 
-                        // Smart Logic: 
-                        // If expired, start renewal from TODAY. 
-                        // If active, add to their CURRENT expiry date.
                         $startDate = $record->membership_expiry_date->isPast() 
                             ? now() 
                             : $record->membership_expiry_date;

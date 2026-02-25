@@ -7,90 +7,97 @@ use App\Models\CheckIn;
 use App\Models\Member;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class CheckInSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Disable Foreign Key Checks to safely wipe tables
         Schema::disableForeignKeyConstraints();
         CheckIn::truncate();
         Member::truncate(); 
         Schema::enableForeignKeyConstraints();
 
-        $this->command->info('Generating 50 Realistic Members with Membership Types...');
+        $this->command->info('Generating 300+ Realistic Members (Structured Cohorts)...');
 
         $members = [];
-        $types = ['regular', 'discount', 'promo'];
 
-        // --- GROUP A: THE URGENT ONES (Expiring in 1-3 days) ---
-        foreach(range(1, 6) as $i) {
-            $members[] = Member::factory()->create([
-                'name' => "Urgent User $i", 
-                'created_at' => Carbon::now()->subMonths(rand(3, 12)), 
-                'membership_expiry_date' => Carbon::now()->addDays(rand(1, 3)),
-                'membership_type' => $types[array_rand($types)],
-            ])->id;
+        // --- GROUP A: THE TARGETS (Guaranteed to trigger Emails & Dashboard Alerts) ---
+        $alertTargets = [
+            ['name' => "Urgent User (1 Day)", 'days' => 1, 'type' => 'regular'],
+            ['name' => "Warning User (3 Days)", 'days' => 3, 'type' => 'discount'],
+            ['name' => "Heads Up User (7 Days)", 'days' => 7, 'type' => 'promo'],
+            ['name' => "Critical User (Today)", 'days' => 0, 'type' => 'regular'],
+        ];
+
+        foreach ($alertTargets as $target) {
+            $member = Member::factory()->create([
+                'name' => $target['name'],
+                'created_at' => Carbon::now()->subMonths(6), 
+                'membership_expiry_date' => Carbon::now()->addDays($target['days']),
+                'membership_type' => $target['type'],
+            ]);
+            $members[] = $member;
         }
 
-        // --- GROUP B: THE WARNING ONES (Expiring in 4-7 days) ---
-        foreach(range(1, 1) as $i) {
+        // --- GROUP B: HISTORICAL / EXPIRED (Churned Members) ---
+        // People who joined 6-12 months ago and already expired. 
+        // This gives us historical data without bloating current active numbers.
+        for ($i = 0; $i < 40; $i++) {
+            $created = Carbon::now()->subMonths(rand(6, 12))->subDays(rand(0, 30));
+            $expired = $created->copy()->addMonths(rand(1, 3)); // Stayed for 1-3 months then quit
+            
             $members[] = Member::factory()->create([
-                'name' => "Warning User $i", 
-                'created_at' => Carbon::now()->subMonths(rand(2, 6)),
-                'membership_expiry_date' => Carbon::now()->addDays(rand(4, 7)),
-                'membership_type' => 'regular',
-            ])->id;
+                'created_at' => $created,
+                'membership_expiry_date' => $expired,
+                'membership_type' => $this->getRandomType(),
+            ]);
         }
 
-        // --- GROUP C: THE EXPIRED ONES (Expired 1-10 days ago) ---
-        foreach(range(1, 5) as $i) {
+        // --- GROUP C: ACTIVE CORE (The bulk of the gym) ---
+        // Joined between 1 and 8 months ago, expiring randomly over the NEXT 6 months.
+        // This is what makes the "Future Trends" chart look beautiful and curved.
+        for ($i = 0; $i < 200; $i++) {
+            $created = Carbon::now()->subMonths(rand(1, 8))->subDays(rand(0, 30));
+            $expires = Carbon::now()->addDays(rand(10, 180)); // Expires within next 6 months
+            
             $members[] = Member::factory()->create([
-                'created_at' => Carbon::now()->subMonths(rand(6, 12)),
-                'membership_expiry_date' => Carbon::now()->subDays(rand(1, 10)), 
-                'membership_type' => $types[array_rand($types)],
-            ])->id;
+                'created_at' => $created,
+                'membership_expiry_date' => $expires,
+                'membership_type' => $this->getRandomType(),
+            ]);
         }
 
-        // --- GROUP D: THE FRESH BLOOD (Joined this week) ---
-        foreach(range(1, 5) as $i) {
+        // --- GROUP D: NEW SIGNUPS (Recent Growth) ---
+        // Joined in the last 30 days, expiry far in the future.
+        for ($i = 0; $i < 40; $i++) {
+            $created = Carbon::now()->subDays(rand(0, 30));
+            $expires = $created->copy()->addMonths([1, 3, 6, 12][array_rand([1, 3, 6, 12])]);
+            
             $members[] = Member::factory()->create([
-                'created_at' => Carbon::now()->subDays(rand(0, 6)),
-                'membership_expiry_date' => Carbon::now()->addMonth(),
-                'membership_type' => 'promo',
-            ])->id;
+                'created_at' => $created,
+                'membership_expiry_date' => $expires,
+                'membership_type' => $this->getRandomType(),
+            ]);
         }
 
-        // --- GROUP E: THE REGULARS ---
-        foreach(range(1, 37) as $i) {
-            $rand = rand(1, 100);
-            $type = ($rand <= 60) ? 'regular' : (($rand <= 90) ? 'discount' : 'promo');
-
-            $members[] = Member::factory()->create([
-                'created_at' => Carbon::now()->subDays(rand(20, 300)), 
-                'membership_expiry_date' => Carbon::now()->addMonths(rand(1, 6)),
-                'membership_type' => $type,
-            ])->id;
-        }
-
-        $this->command->info('Members generated. Starting Realistic Check-in Simulation...');
+        $allMembers = collect($members);
+        $this->command->info("Generated {$allMembers->count()} Members. Simulating 90 Days of Check-ins...");
 
         // ---------------------------------------------------------
-        // CHECK-IN SIMULATION (Realistic Patterns)
+        // CHECK-IN SIMULATION (90 Days)
         // ---------------------------------------------------------
         
-        $daysToSeed = 60; 
-        // <--- FIX: Increased limit to 3000 to ensure we reach "Today"
-        $targetTotal = 3000; 
+        $daysToSeed = 90; 
         
-        // Furukawa Gym Profile (Peak at 6PM)
+        // Accurate Philippine Gym Peak Hours
         $hourWeights = [
-            0 => 0,  1 => 0,  2 => 0,  3 => 0,  4 => 0,  5 => 2,   
-            6 => 20, 7 => 35, 8 => 25, 9 => 15, 10 => 10, 11 => 10, 
-            12 => 15, 13 => 15, 14 => 20,                           
-            15 => 35, 16 => 55,                                     
-            17 => 85, 18 => 90, 19 => 75,                           
-            20 => 40, 21 => 15,                                     
+            0 => 0,  1 => 0,  2 => 0,  3 => 0,  4 => 1,  5 => 5,   // Early Birds
+            6 => 25, 7 => 40, 8 => 25, 9 => 15, 10 => 10, 11 => 10, // Morning Rush
+            12 => 15, 13 => 15, 14 => 20,                           // Lunch Lull
+            15 => 35, 16 => 55,                                     // Afternoon Pickup
+            17 => 90, 18 => 100, 19 => 85,                          // EVENING PEAK
+            20 => 50, 21 => 20,                                     // Winding down
             22 => 5,  23 => 0                                       
         ];
 
@@ -98,43 +105,57 @@ class CheckInSeeder extends Seeder
         $batchSize = 500; 
         $totalInserted = 0;
         
-        // Loop backwards from 60 days ago until today
         for ($i = $daysToSeed; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
-            $dayOfWeek = $date->dayOfWeek; // 0 (Sun) - 6 (Sat)
+            $dayOfWeek = $date->dayOfWeek;
             
-            // --- DAILY VOLUME LOGIC ---
-            if ($dayOfWeek == 1) {
-                $baseVisitors = rand(45, 55); // Monday Surge
-            } elseif ($dayOfWeek == 5) {
-                $baseVisitors = rand(30, 40); // Friday Lull
-            } elseif ($date->isWeekend()) {
-                $baseVisitors = rand(15, 25); // Weekend
-            } else {
-                $baseVisitors = rand(35, 45); // Midweek
+            // Filter pool: Only members who existed on this date, and hadn't expired more than 7 days prior
+            $activeMembersOnThisDate = $allMembers->filter(function($m) use ($date) {
+                return $m->created_at <= $date && $m->membership_expiry_date >= $date->copy()->subDays(7);
+            })->values();
+
+            if ($activeMembersOnThisDate->isEmpty()) continue;
+
+            // Determine how busy the gym is based on the day of the week
+            // e.g., Mondays see ~35% of active members, Sundays see ~15%
+            if ($dayOfWeek == 1) { // Monday
+                $attendanceRate = rand(30, 40) / 100;
+            } elseif ($dayOfWeek >= 2 && $dayOfWeek <= 4) { // Tue-Thu
+                $attendanceRate = rand(25, 35) / 100;
+            } elseif ($dayOfWeek == 5) { // Friday
+                $attendanceRate = rand(20, 25) / 100;
+            } else { // Weekend
+                $attendanceRate = rand(10, 18) / 100;
             }
 
-            // Trend: Gym is getting popular
-            $growth = ($daysToSeed - $i) * 0.3; 
-            
-            $totalVisitors = ceil($baseVisitors + $growth);
+            // Calculate total visitors for the day
+            $totalVisitors = ceil($activeMembersOnThisDate->count() * $attendanceRate);
 
             for ($v = 0; $v < $totalVisitors; $v++) {
-                if ($totalInserted >= $targetTotal) break 2; 
-
                 $hour = $this->getWeightedRandomHour($hourWeights);
                 $checkInTime = $date->copy()->setTime($hour, rand(0, 59), rand(0, 59));
                 
+                // FIX: If the randomly generated check-in time is in the future, ignore it entirely!
+                // This prevents the system from pretending 50 people checked in tonight before tonight even happens.
+                if ($checkInTime->isFuture()) {
+                    continue; 
+                }
+                
+                // Duration: Shorter in mornings (people have work), longer in evenings
                 $minDuration = ($hour < 9) ? 45 : 60;
                 $maxDuration = ($hour < 9) ? 75 : 120;
                 $checkOutTime = $checkInTime->copy()->addMinutes(rand($minDuration, $maxDuration));
 
-                if ($checkOutTime->isFuture()) $checkOutTime = null; 
+                // If check-out is in the future, they are "Currently Inside" the gym!
+                if ($checkOutTime->isFuture()) {
+                    $checkOutTime = null; 
+                }
 
-                $randomMemberId = $members[array_rand($members)];
+                // Pick a random eligible member
+                $randomMember = $activeMembersOnThisDate->random();
 
                 $buffer[] = [
-                    'member_id' => $randomMemberId, 
+                    'member_id' => $randomMember->id, 
                     'created_at' => $checkInTime,     
                     'check_out_at' => $checkOutTime,  
                     'updated_at' => $checkOutTime ?? $checkInTime,
@@ -149,9 +170,17 @@ class CheckInSeeder extends Seeder
             }
         }
 
-        if (!empty($buffer)) CheckIn::insert($buffer);
+        if (!empty($buffer)) {
+            CheckIn::insert($buffer);
+        }
         
-        $this->command->info("Done! Seeded {$totalInserted} visits. Last 7 days are fully populated.");
+        $this->command->info("Done! Seeded {$totalInserted} realistic check-in logs over 90 days.");
+    }
+
+    private function getRandomType(): string
+    {
+        $rand = rand(1, 100);
+        return ($rand <= 60) ? 'regular' : (($rand <= 85) ? 'discount' : 'promo');
     }
 
     private function getWeightedRandomHour(array $weights): int
@@ -161,6 +190,6 @@ class CheckInSeeder extends Seeder
             $rand -= $weight;
             if ($rand <= 0) return $hour;
         }
-        return 17;
+        return 17; // Fallback to 5 PM
     }
 }

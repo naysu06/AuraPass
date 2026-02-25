@@ -17,26 +17,34 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
     
-    // <--- THIS GROUPS IT UNDER "SETTINGS" IN THE SIDEBAR
     protected static ?string $navigationGroup = 'Settings';
     
     protected static ?int $navigationSort = 1;
 
-    public static function form(Forms\Form $form): Forms\Form
+    // RBAC Logic - ONLY Superadmins can see/access this resource
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->role === 'superadmin';
+    }
+
+    public static function form(Forms\Form $form): Form
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('name')
+                Forms\Components\TextInput::make('username')
                     ->required()
-                    ->maxLength(255),
-                
-                Forms\Components\TextInput::make('email')
-                    ->email()
-                    ->required()
+                    ->unique(ignoreRecord: true)
                     ->maxLength(255),
 
-                // Password handling:
-                // Only required on creation. Dehydrated (saved) only if filled.
+                Forms\Components\Select::make('role')
+                    ->options([
+                        'superadmin' => 'Super Administrator',
+                        'admin' => 'Normal Administrator',
+                    ])
+                    ->required()
+                    ->default('admin'),
+
+                // Password handling
                 Forms\Components\TextInput::make('password')
                     ->password()
                     ->dehydrateStateUsing(fn ($state) => Hash::make($state))
@@ -45,14 +53,21 @@ class UserResource extends Resource
             ]);
     }
 
-    public static function table(Tables\Table $table): Tables\Table
+    public static function table(Tables\Table $table): Table
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')
+                Tables\Columns\TextColumn::make('username')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('email')
-                    ->searchable(),
+                    
+                Tables\Columns\TextColumn::make('role')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'superadmin' => 'danger',
+                        'admin' => 'info',
+                    })
+                    ->formatStateUsing(fn (string $state) => ucfirst($state)),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

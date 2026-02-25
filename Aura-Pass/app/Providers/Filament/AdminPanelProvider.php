@@ -24,6 +24,9 @@ use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\PeakHoursChart;
 use App\Filament\Widgets\DailyVisitsChart;
 use App\Filament\Widgets\DataAnalyticsHeader;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Support\HtmlString;
+use App\Filament\Widgets\FutureTrendsChart;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -33,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            ->login(\App\Filament\Pages\Auth\Login::class) // Use custom login page
             ->colors([
                 'primary' => Color::Amber,
             ])
@@ -43,16 +46,14 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Pages\Dashboard::class,
             ])
-            //->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                //Widgets\AccountWidget::class, // User account summary
                 StatsOverview::class,
                 AccessLog::class,
                 ExpiringMembers::class,
-                DataAnalyticsHeader::class, // Custom header widget
+                DataAnalyticsHeader::class, 
                 DailyVisitsChart::class,
                 PeakHoursChart::class,
-                //Widgets\FilamentInfoWidget::class, // Documentation links
+                FutureTrendsChart::class,
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -68,8 +69,37 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            // Enable the bell icon and make it check every 2 seconds
             ->databaseNotifications()
-            ->databaseNotificationsPolling('2s');
+            ->databaseNotificationsPolling('2s')
+            // DIRECT TABLE CSS: This targets the Table directly instead of the Widget wrapper
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString('
+                    <style>
+                        .custom-fixed-table {
+                            height: 450px !important; 
+                            display: flex !important;
+                            flex-direction: column !important;
+                        }
+                        .custom-fixed-table .fi-ta {
+                            flex: 1 1 0% !important;
+                            display: flex !important;
+                            flex-direction: column !important;
+                        }
+                        .custom-fixed-table .fi-ta-content {
+                            flex: 1 1 0% !important; /* Forces inner content to absorb remaining space */
+                            display: flex !important;
+                            flex-direction: column !important;
+                            overflow-y: auto !important;
+                        }
+                        .custom-fixed-table .fi-ta-content > table {
+                            margin-bottom: auto !important; /* Pushes empty space to bottom */
+                        }
+                        .custom-fixed-table .fi-ta-empty-state {
+                            margin: auto !important; /* Centers "No members" perfectly */
+                        }
+                    </style>
+                ')
+            );
     }
 }
