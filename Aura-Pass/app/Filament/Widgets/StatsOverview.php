@@ -61,7 +61,7 @@ class StatsOverview extends BaseWidget
                 ->color('gray'),
 
             // 4. Business Health (Renamed to avoid confusion with "People Inside")
-            Stat::make('Active Subscriptions', Member::where('membership_expiry_date', '>', now())->count())
+            Stat::make('Active Memberships', Member::where('membership_expiry_date', '>', now())->count())
                 ->description('Paying members')
                 ->descriptionIcon('heroicon-m-currency-dollar')
                 ->color('success'),

@@ -173,6 +173,69 @@ class MemberResource extends Resource
                                 ->formatStateUsing(fn (string $state): string => ucfirst($state)),
 
                             TextEntry::make('membership_expiry_date')->date()->label('Expiry Date'),
+
+                            // NEW: AI Churn Risk Score displayed directly on the member profile
+                            TextEntry::make('churn_risk_score')
+                                ->label('Churn Risk Score')
+                                ->extraAttributes(['style' => 'width: fit-content;']) // FIX: Pulls the "i" icon right beside the badge
+                                ->getStateUsing(fn (Member $record) => round($record->churn_risk_score * 100) . '%')
+                                ->badge()
+                                ->color(fn (Member $record) => match (true) {
+                                    $record->churn_risk_score >= 0.60 => 'danger',  // Red for high risk
+                                    $record->churn_risk_score >= 0.30 => 'warning', // Yellow for medium risk
+                                    default => 'success',                           // Green for safe
+                                })
+                                ->icon(fn (Member $record) => match (true) {
+                                    $record->churn_risk_score >= 0.60 => 'heroicon-m-exclamation-triangle',
+                                    $record->churn_risk_score >= 0.30 => 'heroicon-m-shield-exclamation',
+                                    default => 'heroicon-m-shield-check',
+                                })
+                                // ADDED: The Info Action Modal explaining the danger levels (With Inline CSS)
+                                ->suffixAction(
+                                    Action::make('explain_risk')
+                                        ->icon('heroicon-m-information-circle')
+                                        ->color('gray')
+                                        ->modalHeading('Understanding Churn Risk Score')
+                                        ->modalSubmitAction(false)
+                                        ->modalCancelActionLabel('Got it')
+                                        ->modalContent(fn () => new HtmlString('
+                                            <div class="flex flex-col gap-4">
+                                                <p class="text-sm text-white-600 dark:text-gray-300 leading-relaxed mb-1">
+                                                    The Churn Risk Score analyzes a member\'s recent attendance, membership type, and tenure to predict their likelihood of not renewing their gym membership.
+                                                </p>
+                                                
+                                                <div style="background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3);" class="flex items-start gap-3 p-4 rounded-xl shadow-sm">
+                                                    <div style="background-color: rgba(16, 185, 129, 0.15); color: #10B981;" class="mt-0.5 flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full">
+                                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                                    </div>
+                                                    <div>
+                                                        <span style="color: #10B981;" class="text-sm font-bold">0% - 29% (Safe)</span>
+                                                        <p class="text-xs mt-1 text-white-600 dark:text-white-400">Highly engaged. Regularly visits, loyal regular member, or recently renewed.</p>
+                                                    </div>
+                                                </div>
+
+                                                <div style="background-color: rgba(249, 115, 22, 0.08); border: 1px solid rgba(249, 115, 22, 0.3);" class="flex items-start gap-3 p-4 rounded-xl shadow-sm">
+                                                    <div style="background-color: rgba(249, 115, 22, 0.15); color: #F97316;" class="mt-0.5 flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full">
+                                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                                    </div>
+                                                    <div>
+                                                        <span style="color: #F97316;" class="text-sm font-bold">30% - 59% (Medium Risk)</span>
+                                                        <p class="text-xs mt-1 text-white-600 dark:text-white-400">Showing signs of disengagement. Hasn\'t visited in over a week, or is in the vulnerable 2-6 month "buyer\'s remorse" phase.</p>
+                                                    </div>
+                                                </div>
+
+                                                <div style="background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3);" class="flex items-start gap-3 p-4 rounded-xl shadow-sm">
+                                                    <div style="background-color: rgba(239, 68, 68, 0.15); color: #EF4444;" class="mt-0.5 flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full">
+                                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                                    </div>
+                                                    <div>
+                                                        <span style="color: #EF4444;" class="text-sm font-bold">60%+ (High Risk)</span>
+                                                        <p class="text-xs mt-1 text-white-600 dark:text-white-400">Critical danger of dropping out. Hasn\'t visited in 14-20+ days, membership expiring imminently, or on a short-term promo.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        '))
+                                ),
                         ]),
 
                         // Column 3: QR Code Group

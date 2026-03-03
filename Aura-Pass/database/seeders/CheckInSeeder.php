@@ -12,20 +12,19 @@ use Illuminate\Support\Facades\Schema;
  * Baguio City Gym — Realistic Behavioral CheckIn Seeder
  *
  * Personas & retention modeled after real Baguio demographics:
- *   - Students (SLU, UB, BSU, BCU) — semester-driven, holiday exodus
- *   - BPO/Office Workers         — consistent 9-5 schedule, evening crowd
- *   - Resolutioners              — Jan spike, rapid decay
- *   - Tourists / Panagbenga      — Feb surge, short stays
- *   - Seniors / Retirees         — morning loyalists, steady long-term
- *   - Athletes / Gym Rats        — hardcore, near-daily, multi-year
+ * - Students (SLU, UB, BSU, BCU) — semester-driven, holiday exodus
+ * - BPO/Office Workers         — consistent 9-5 schedule, evening crowd
+ * - Resolutioners              — Jan spike, rapid decay
+ * - Seniors / Retirees         — morning loyalists, steady long-term
+ * - Athletes / Gym Rats        — hardcore, near-daily, multi-year
  *
  * Seasonal calendar baked in:
- *   - Jan–Feb  : Resolutioner surge + Panagbenga Festival (tourist wave)
- *   - Mar–May  : Kadayawan / Holy Week lull, summer for non-students
- *   - Jun–Jul  : Rainy season + inter-school break → sharp drop
- *   - Aug–Sep  : 1st semester starts → student flood
- *   - Oct–Nov  : Mid-semester slump, stable workers
- *   - Dec      : Christmas break → near-ghost town
+ * - Jan–Feb  : Resolutioner surge (Panagbenga tourists removed, locals only)
+ * - Mar–May  : Kadayawan / Holy Week lull, summer for non-students
+ * - Jun–Jul  : Rainy season + inter-school break → sharp drop
+ * - Aug–Sep  : 1st semester starts → student flood
+ * - Oct–Nov  : Mid-semester slump, stable workers
+ * - Dec      : Christmas break → near-ghost town
  */
 class CheckInSeeder extends Seeder
 {
@@ -51,7 +50,7 @@ class CheckInSeeder extends Seeder
         Member::truncate();
         Schema::enableForeignKeyConstraints();
 
-        $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts...');
+        $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts (Limited to ~150)...');
         $members = $this->generateMembers();
 
         $this->command->info("✅  Created {$members->count()} members across " . self::SEED_MONTHS . " months.");
@@ -76,6 +75,9 @@ class CheckInSeeder extends Seeder
 
             $cohort = $this->buildMonthlyCohort($monthNum, $targetMonth);
             foreach ($cohort as $memberData) {
+                // Hard cap to ensure we don't blow past ~145 members + 5 fixtures
+                if ($members->count() >= 145) break;
+                
                 $members->push(Member::factory()->create($memberData));
             }
         }
@@ -88,6 +90,7 @@ class CheckInSeeder extends Seeder
             ['name' => 'Alert — Expires in 7 Days',   'days' => 7,  'type' => 'promo'],
             ['name' => 'Alert — Expires in 14 Days',  'days' => 14, 'type' => 'regular'],
         ];
+        
         foreach ($fixtures as $f) {
             $members->push(Member::factory()->create([
                 'name'                    => $f['name'],
@@ -102,29 +105,29 @@ class CheckInSeeder extends Seeder
 
     /**
      * Returns an array of member attribute arrays for a given month.
-     * Volume + persona mix are shaped by Baguio's seasonal reality.
+     * Volume scaled down significantly to maintain ~150 total members.
      */
     private function buildMonthlyCohort(int $month, Carbon $targetMonth): array
     {
         $cohort = [];
 
-        // Base new-member volumes by month
+        // Scaled down volumes to hit exactly ~145 generated members over 18 months
         $volumeMap = [
-            1  => 38,  // Jan  — Resolutioners + post-holiday motivation
-            2  => 28,  // Feb  — Panagbenga tourists + continuing resolutioners
-            3  => 14,  // Mar  — Holy Week lull starts
-            4  => 10,  // Apr  — Summer break, Baguio tourists but not gym-goers
-            5  => 10,  // May  — Pre-enrolment calm
-            6  => 7,   // Jun  — Rainy season, school re-enrolling, few gym joiners
-            7  => 6,   // Jul  — Deep rainy season
-            8  => 32,  // Aug  — 1st Sem starts, student flood
-            9  => 26,  // Sep  — Semester momentum
-            10 => 14,  // Oct  — Mid-sem, stable
-            11 => 12,  // Nov  — Pre-finals
-            12 => 5,   // Dec  — Christmas break exodus
+            1  => 16,  // Jan  — Resolutioners
+            2  => 12,  // Feb  — Locals inspired (tourists removed)
+            3  => 6,   // Mar  — Holy Week lull starts
+            4  => 4,   // Apr  — Summer break
+            5  => 4,   // May  — Pre-enrolment calm
+            6  => 3,   // Jun  — Rainy season
+            7  => 3,   // Jul  — Deep rainy season
+            8  => 14,  // Aug  — 1st Sem starts, student flood
+            9  => 11,  // Sep  — Semester momentum
+            10 => 6,   // Oct  — Mid-sem, stable
+            11 => 5,   // Nov  — Pre-finals
+            12 => 3,   // Dec  — Christmas break exodus
         ];
 
-        $volume = $volumeMap[$month] ?? 10;
+        $volume = $volumeMap[$month] ?? 5;
         // Add some month-to-month noise (±20%)
         $volume = (int) round($volume * (0.80 + lcg_value() * 0.40));
 
@@ -228,7 +231,6 @@ class CheckInSeeder extends Seeder
     ): float {
         $prob = match ($membershipType) {
             // PROMO = Resolutioner. Very high start, exponential decay.
-            // Real data: 67% drop attendance by week 3 (IHRSA).
             'promo' => max(0.0, 0.65 * pow(0.93, $daysSinceJoined)),
 
             // DISCOUNT = Students/Seniors. Semester-sensitive steady state.
@@ -257,7 +259,7 @@ class CheckInSeeder extends Seeder
         if (in_array($month, [7, 8])) $prob -= 0.08;
         // Post-New Year peak (first 2 weeks of January, high discipline)
         if ($month === 1 && $daysSinceJoined <= 14) $prob += 0.10;
-        // Panagbenga month — visitors but also locals inspired
+        // Panagbenga month — tourists don't join, but local motivation still carries
         if ($month === 2) $prob += 0.05;
 
         return (float) max(0.02, min($prob, 0.95));
@@ -344,26 +346,25 @@ class CheckInSeeder extends Seeder
      * Persona probability mix varies month by month.
      *
      * Personas:
-     *   student      — SLU/UB/BSU/BCU, bulk of membership
-     *   worker       — BPO, government, retail staff
-     *   resolutioner — Jan–Feb burst, no sticking power
-     *   tourist      — Feb (Panagbenga), short-term promos
-     *   senior       — retirees, consistent morning crowd
-     *   athlete      — competitive lifters / runners, high frequency
+     * student      — SLU/UB/BSU/BCU, bulk of membership
+     * worker       — BPO, government, retail staff
+     * resolutioner — Jan–Feb burst, no sticking power
+     * senior       — retirees, consistent morning crowd
+     * athlete      — competitive lifters / runners, high frequency
      */
     private function pickPersona(int $month): string
     {
-        // [student, worker, resolutioner, tourist, senior, athlete] cumulative %
+        // [student, worker, resolutioner, senior, athlete] cumulative %
         $distribution = match (true) {
-            in_array($month, [1, 2])    => [40, 25, 20, 8, 5, 2],   // Jan–Feb
-            in_array($month, [3, 4, 5]) => [25, 40, 5,  2, 20, 8],  // Summer
-            in_array($month, [6, 7])    => [20, 45, 3,  0, 22, 10], // Rainy
-            in_array($month, [8, 9])    => [60, 20, 2,  0, 12, 6],  // Sem starts
-            in_array($month, [10, 11])  => [45, 30, 2,  0, 15, 8],  // Mid-sem
-            default                     => [20, 40, 5,  2, 25, 8],  // Dec
+            in_array($month, [1, 2])    => [43, 30, 20, 5,  2],  // Jan–Feb (High resolutioners)
+            in_array($month, [3, 4, 5]) => [25, 42, 5,  20, 8],  // Summer (Students drop, workers hold)
+            in_array($month, [6, 7])    => [20, 45, 3,  22, 10], // Rainy season
+            in_array($month, [8, 9])    => [60, 20, 2,  12, 6],  // Sem starts (Huge student influx)
+            in_array($month, [10, 11])  => [45, 30, 2,  15, 8],  // Mid-sem
+            default                     => [20, 42, 5,  25, 8],  // Dec
         };
 
-        $personas = ['student', 'worker', 'resolutioner', 'tourist', 'senior', 'athlete'];
+        $personas = ['student', 'worker', 'resolutioner', 'senior', 'athlete'];
         $rand = rand(1, 100);
         $cumulative = 0;
         foreach ($distribution as $i => $weight) {
@@ -380,7 +381,6 @@ class CheckInSeeder extends Seeder
             'student'      => rand(3, 5),    // One semester
             'worker'       => rand(5, 14),   // Steady ~1 year
             'resolutioner' => rand(1, 2),    // Burns out fast
-            'tourist'      => 1,             // Short-term visitor pass
             'senior'       => rand(8, 24),   // Long-term loyalists
             'athlete'      => rand(10, 24),  // Highly committed
             default        => rand(2, 4),
@@ -393,7 +393,6 @@ class CheckInSeeder extends Seeder
             'student'      => 'discount',
             'worker'       => 'regular',
             'resolutioner' => 'promo',
-            'tourist'      => 'promo',
             'senior'       => 'discount',
             'athlete'      => 'regular',
             default        => 'regular',

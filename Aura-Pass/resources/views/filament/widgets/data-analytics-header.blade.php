@@ -15,7 +15,7 @@
                 Data Analytics
             </h2>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-                Overview of gym traffic trends and peak hours.
+                Overview of gym traffic, peak hours, and predictive trend.
             </p>
         </div>
     </div>

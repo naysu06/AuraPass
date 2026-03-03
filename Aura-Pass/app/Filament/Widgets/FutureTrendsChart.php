@@ -13,13 +13,10 @@ class FutureTrendsChart extends ChartWidget
     protected int|string|array $columnSpan = 'full';
     protected static ?string $maxHeight    = '320px';
 
-    // SUG #6  — Single source of truth for the default filter
     protected string $defaultFilter = '3';
+    protected static bool $isLazy   = true;
 
-    // SUG #10 — Skeleton loads first so filter changes don't cause a jarring snap
-    protected static bool $isLazy = true;
-
-    // ── Render-cycle cache (all expensive work runs exactly once per request) ─
+    // ── Render-cycle cache ────────────────────────────────────────────────────
     private ?array $projectionCache  = null;
     private ?array $churnByTypeCache = null;
 
@@ -33,7 +30,6 @@ class FutureTrendsChart extends ChartWidget
         $churnRates   = $this->calculateChurnRatesByType();
         $blendedChurn = round($projection['blendedChurnRate'] * 100) . '%';
 
-        // Blade view: resources/views/filament/widgets/trends-heading.blade.php
         return new HtmlString(
             view('filament.widgets.trends-heading', [
                 'months'        => $projection['monthsToProject'],
@@ -43,14 +39,15 @@ class FutureTrendsChart extends ChartWidget
                 'renewals'      => $projection['totalRenewals'],
                 'blendedChurn'  => $blendedChurn,
                 'signups'       => $projection['totalNewSignups'],
-                // SUG #1 — per-type churn breakdown surfaced in the tooltip
                 'promoChurn'    => round($churnRates['promo']    * 100) . '%',
                 'discountChurn' => round($churnRates['discount'] * 100) . '%',
                 'regularChurn'  => round($churnRates['regular']  * 100) . '%',
+                'highRiskCount' => $projection['highRiskCount'],  
             ])->render()
         );
     }
 
+    // NEW "COMMAND CENTER" SMART ALERT UI - WITH INLINE COLORS TO PREVENT CSS PURGING
     public function getDescription(): string|HtmlString|null
     {
         $projection   = $this->getProjection();
@@ -64,30 +61,25 @@ class FutureTrendsChart extends ChartWidget
         if ($future < $current) {
             $diff = $current - $future;
             return new HtmlString("
-                <div class='flex items-start gap-3 mt-2 px-4 py-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10'>
-                    <!-- Icon -->
-                    <div class='flex-shrink-0 mt-0.5'>
-                        <div class='flex items-center justify-center w-8 h-8 rounded-full bg-red-100 dark:bg-red-500/20'>
-                            <svg class='w-4 h-4 text-red-600 dark:text-red-400' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
-                                <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2'
-                                    d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'/>
+                <div style='background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2);' class='flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4 px-6 py-4 rounded-xl shadow-sm'>
+                    <div class='flex items-center gap-4'>
+                        <div style='background-color: rgba(239, 68, 68, 0.15); color: #EF4444;' class='flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0'>
+                            <svg class='w-5 h-5' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                                <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'/>
                             </svg>
                         </div>
+                        <div>
+                            <p class='text-sm font-bold text-gray-900 dark:text-white'>
+                                Predicted Drop <span style='color: #EF4444;' class='font-medium ml-1'>— Losing {$diff} members {$timeframe}</span>
+                            </p>
+                            <p class='text-xs text-gray-600 dark:text-gray-400 mt-1'>
+                                <strong class='text-gray-800 dark:text-gray-200'>Action:</strong> Peak expiry hits in {$peakLabel}. Run a renewal campaign ASAP.
+                            </p>
+                        </div>
                     </div>
-                    <!-- Content -->
-                    <div class='flex-1 min-w-0'>
-                        <p class='text-sm font-semibold text-red-700 dark:text-red-400'>
-                            Predicted Drop — {$diff} members lost {$timeframe}
-                        </p>
-                        <p class='mt-0.5 text-xs text-red-600/80 dark:text-red-400/70'>
-                            Smart Churn is <span class='font-semibold'>{$blendedChurn}</span>.
-                            Peak expiry hits in <span class='font-semibold'>{$peakLabel}</span>
-                        </p>
-                    </div>
-                    <!-- Churn badge -->
-                    <div class='flex-shrink-0'>
-                        <span class='inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'>
-                            {$blendedChurn} churn
+                    <div class='flex-shrink-0 sm:ml-4'>
+                        <span style='background-color: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #EF4444;' class='px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide shadow-sm'>
+                            {$blendedChurn} Churn
                         </span>
                     </div>
                 </div>
@@ -97,30 +89,25 @@ class FutureTrendsChart extends ChartWidget
         if ($future > $current) {
             $diff = $future - $current;
             return new HtmlString("
-                <div class='flex items-start gap-3 mt-2 px-4 py-3 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10'>
-                    <!-- Icon -->
-                    <div class='flex-shrink-0 mt-0.5'>
-                        <div class='flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-500/20'>
-                            <svg class='w-4 h-4 text-emerald-600 dark:text-emerald-400' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
-                                <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2'
-                                    d='M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'/>
+                <div style='background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2);' class='flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4 px-6 py-4 rounded-xl shadow-sm'>
+                    <div class='flex items-center gap-4'>
+                        <div style='background-color: rgba(16, 185, 129, 0.15); color: #10B981;' class='flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0'>
+                            <svg class='w-5 h-5' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                                <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'/>
                             </svg>
                         </div>
+                        <div>
+                            <p class='text-sm font-bold text-gray-900 dark:text-white'>
+                                Healthy Growth <span style='color: #10B981;' class='font-medium ml-1'>— +{$diff} members {$timeframe}</span>
+                            </p>
+                            <p class='text-xs text-gray-600 dark:text-gray-400 mt-1'>
+                                <strong class='text-gray-800 dark:text-gray-200'>Action:</strong> Keep retention efforts strong through {$peakLabel}.
+                            </p>
+                        </div>
                     </div>
-                    <!-- Content -->
-                    <div class='flex-1 min-w-0'>
-                        <p class='text-sm font-semibold text-emerald-700 dark:text-emerald-400'>
-                            Healthy Growth — +{$diff} members projected {$timeframe}
-                        </p>
-                        <p class='mt-0.5 text-xs text-emerald-600/80 dark:text-emerald-400/70'>
-                            Smart Churn is <span class='font-semibold'>{$blendedChurn}</span>.
-                            Peak expiry in <span class='font-semibold'>{$peakLabel}</span> — keep retention efforts strong then.
-                        </p>
-                    </div>
-                    <!-- Churn badge -->
-                    <div class='flex-shrink-0'>
-                        <span class='inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'>
-                            {$blendedChurn} churn
+                    <div class='flex-shrink-0 sm:ml-4'>
+                        <span style='background-color: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #10B981;' class='px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide shadow-sm'>
+                            {$blendedChurn} Churn
                         </span>
                     </div>
                 </div>
@@ -128,29 +115,25 @@ class FutureTrendsChart extends ChartWidget
         }
 
         return new HtmlString("
-            <div class='flex items-start gap-3 mt-2 px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10'>
-                <!-- Icon -->
-                <div class='flex-shrink-0 mt-0.5'>
-                    <div class='flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/20'>
-                        <svg class='w-4 h-4 text-blue-600 dark:text-blue-400' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
-                            <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2'
-                                d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'/>
+            <div style='background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2);' class='flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4 px-6 py-4 rounded-xl shadow-sm'>
+                <div class='flex items-center gap-4'>
+                    <div style='background-color: rgba(59, 130, 246, 0.15); color: #3B82F6;' class='flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0'>
+                        <svg class='w-5 h-5' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                            <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'/>
                         </svg>
                     </div>
+                    <div>
+                        <p class='text-sm font-bold text-gray-900 dark:text-white'>
+                            Stable Trend <span style='color: #3B82F6;' class='font-medium ml-1'>— Membership holding steady</span>
+                        </p>
+                        <p class='text-xs text-gray-600 dark:text-gray-400 mt-1'>
+                            <strong class='text-gray-800 dark:text-gray-200'>Status:</strong> Renewals and signups are perfectly pacing expirations.
+                        </p>
+                    </div>
                 </div>
-                <!-- Content -->
-                <div class='flex-1 min-w-0'>
-                    <p class='text-sm font-semibold text-blue-700 dark:text-blue-400'>
-                        Stable Trend — membership holding steady {$timeframe}
-                    </p>
-                    <p class='mt-0.5 text-xs text-blue-600/80 dark:text-blue-400/70'>
-                        Smart Churn is <span class='font-semibold'>{$blendedChurn}</span>. Renewals and new signups are keeping pace with expirations.
-                    </p>
-                </div>
-                <!-- Churn badge -->
-                <div class='flex-shrink-0'>
-                    <span class='inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'>
-                        {$blendedChurn} churn
+                <div class='flex-shrink-0 sm:ml-4'>
+                    <span style='background-color: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #3B82F6;' class='px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide shadow-sm'>
+                        {$blendedChurn} Churn
                     </span>
                 </div>
             </div>
@@ -176,10 +159,6 @@ class FutureTrendsChart extends ChartWidget
 
         return [
             'datasets' => [
-                // SUG #7 — fill '+1' creates a layered confidence band:
-                //   Optimistic fills DOWN to Expected  → light green band
-                //   Expected fills DOWN to Worst Case  → blue band
-                //   Result: darker in the middle (likely outcome), fading to extremes
                 [
                     'label'           => 'Optimistic Goal',
                     'data'            => $projection['optimisticData'],
@@ -212,64 +191,40 @@ class FutureTrendsChart extends ChartWidget
         ];
     }
 
-    protected function getType(): string
-    {
-        return 'line';
-    }
+    protected function getType(): string { return 'line'; }
 
     protected function getOptions(): array
     {
         return [
             'plugins' => [
-                'tooltip' => [
-                    'mode'      => 'index',
-                    'intersect' => false,
-                ],
-                'legend' => [
-                    'display'  => true,
-                    'position' => 'bottom',
-                ],
+                'tooltip' => ['mode' => 'index', 'intersect' => false],
+                'legend'  => ['display' => true, 'position' => 'bottom'],
             ],
             'scales' => [
                 'y' => ['beginAtZero' => true],
-                'x' => [
-                    'ticks' => [
-                        // Bold the "Now" anchor label so it stands out
-                        'font' => [
-                            'weight' => 'bold',
-                        ],
-                    ],
-                ],
+                'x' => ['ticks' => ['font' => ['weight' => 'bold']]],
             ],
         ];
     }
 
     // =========================================================================
-    // CORE PROJECTION ENGINE — computed once, cached for the whole render cycle
+    // CORE PROJECTION ENGINE
     // =========================================================================
 
-    /**
-     * Single computation point consumed by getHeading(), getDescription(),
-     * and getData(). All loops, queries and math run exactly once per request.
-     */
+    // This function generates a comprehensive projection of future membership trends based on historical data, current active members, and calculated churn rates. It returns an array containing all the necessary data for rendering the chart and summary statistics.
     private function getProjection(): array
     {
-        if ($this->projectionCache !== null) {
-            return $this->projectionCache;
-        }
+        if ($this->projectionCache !== null) return $this->projectionCache;
 
         $monthsToProject   = (int) ($this->filter ?? $this->defaultFilter);
         $churnRates        = $this->calculateChurnRatesByType();
         $avgMonthlySignups = $this->calculateAverageSignups();
         $currentActive     = Member::where('membership_expiry_date', '>=', now())->count();
+        $blendedChurnRate  = $this->calculateBlendedChurnRate($churnRates);
+        $optimisticRates   = array_map(fn($r) => max($r * 0.65, 0.05), $churnRates);
 
-        // Weighted blended rate used only for the display label
-        $blendedChurnRate = $this->calculateBlendedChurnRate($churnRates);
+        $highRiskCount = $this->countHighRiskMembers();
 
-        // Optimistic scenario: 35% relative retention improvement per type (SUG #4)
-        $optimisticRates = array_map(fn($r) => max($r * 0.65, 0.05), $churnRates);
-
-        // Pre-fetch ALL expiry counts by month + type in ONE query (no per-loop queries)
         $expiryByMonthAndType = Member::selectRaw("
                 DATE_FORMAT(membership_expiry_date, '%Y-%m') AS ym,
                 membership_type,
@@ -282,7 +237,6 @@ class FutureTrendsChart extends ChartWidget
             ->groupBy('ym')
             ->map(fn($rows) => $rows->pluck('total', 'membership_type'));
 
-        // SUG #6 — Prepend "Now" as an anchor so the chart isn't floating in the future
         $labels         = ['Now'];
         $worstCaseData  = [$currentActive];
         $expectedData   = [$currentActive];
@@ -294,14 +248,14 @@ class FutureTrendsChart extends ChartWidget
 
         $totalExpiring    = 0;
         $totalRenewals    = 0;
-        $expiryByMonthRaw = [];  // Used to find peak expiry month for SUG #8
+        $expiryByMonthRaw = [];
 
+        // Loop through each future month and calculate the projected active members based on expirations, renewals, and new signups. We also track the month with the highest expirations to alert the user.
         for ($i = 1; $i <= $monthsToProject; $i++) {
             $targetMonth = now()->addMonths($i);
             $monthKey    = $targetMonth->format('Y-m');
             $labels[]    = $targetMonth->format('M Y');
 
-            // Break expiring members into their type buckets
             $typeBreakdown    = $expiryByMonthAndType[$monthKey] ?? collect();
             $expiringPromo    = (int) ($typeBreakdown['promo']    ?? 0);
             $expiringDiscount = (int) ($typeBreakdown['discount'] ?? 0);
@@ -310,7 +264,6 @@ class FutureTrendsChart extends ChartWidget
 
             $expiryByMonthRaw[$monthKey] = $expiringTotal;
 
-            // SUG #1 — Each type renews at its own historically-calculated churn rate
             $renewals = (int) round($expiringPromo    * (1 - $churnRates['promo']))
                       + (int) round($expiringDiscount * (1 - $churnRates['discount']))
                       + (int) round($expiringRegular  * (1 - $churnRates['regular']));
@@ -319,39 +272,36 @@ class FutureTrendsChart extends ChartWidget
                                 + (int) round($expiringDiscount * (1 - $optimisticRates['discount']))
                                 + (int) round($expiringRegular  * (1 - $optimisticRates['regular']));
 
-            // SUG #3 — Seasonal multiplier makes projected lines curve naturally
             $multiplier              = $this->getSeasonalSignupMultiplier($targetMonth->month);
             $seasonalSignups         = (int) round($avgMonthlySignups * $multiplier);
             $optimisticSeasonalSignups = (int) round($seasonalSignups * 1.2);
 
-            // SUG #4 — True worst case: zero renewals + zero signups + 2% monthly early cancellations
             $earlyCancel      = (int) round($runningWorstCase * 0.02);
             $runningWorstCase = max($runningWorstCase - $expiringTotal - $earlyCancel, 0);
             $worstCaseData[]  = $runningWorstCase;
 
-            $runningExpected   = max($runningExpected   - $expiringTotal + $renewals           + $seasonalSignups,           0);
-            $runningOptimistic = max($runningOptimistic - $expiringTotal + $optimisticRenewals + $optimisticSeasonalSignups,  0);
+            $runningExpected   = max($runningExpected   - $expiringTotal + $renewals           + $seasonalSignups,          0);
+            $runningOptimistic = max($runningOptimistic - $expiringTotal + $optimisticRenewals + $optimisticSeasonalSignups, 0);
 
-            $expectedData[]    = $runningExpected;
-            $optimisticData[]  = $runningOptimistic;
+            $expectedData[]   = $runningExpected;
+            $optimisticData[] = $runningOptimistic;
 
             $totalExpiring += $expiringTotal;
             $totalRenewals += $renewals;
         }
 
-        // SUG #8 — Find the month with the most expirations for the actionable alert
         arsort($expiryByMonthRaw);
         $peakMonthKey    = array_key_first($expiryByMonthRaw) ?? null;
         $peakExpiryLabel = $peakMonthKey
             ? Carbon::createFromFormat('Y-m', $peakMonthKey)->format('F Y')
             : 'N/A';
 
-        // Sum seasonal signups across the projected window for the heading tooltip
         $totalNewSignups = (int) array_sum(array_map(
             fn($i) => round($avgMonthlySignups * $this->getSeasonalSignupMultiplier(now()->addMonths($i)->month)),
             range(1, $monthsToProject)
         ));
 
+        // Cache the entire projection result for this render cycle to optimize performance, since multiple methods may request the same data.
         return $this->projectionCache = [
             'monthsToProject'  => $monthsToProject,
             'blendedChurnRate' => $blendedChurnRate,
@@ -361,6 +311,7 @@ class FutureTrendsChart extends ChartWidget
             'totalRenewals'    => $totalRenewals,
             'totalNewSignups'  => $totalNewSignups,
             'peakExpiryLabel'  => $peakExpiryLabel,
+            'highRiskCount'    => $highRiskCount,
             'labels'           => $labels,
             'worstCaseData'    => $worstCaseData,
             'expectedData'     => $expectedData,
@@ -372,29 +323,32 @@ class FutureTrendsChart extends ChartWidget
     // HELPERS
     // =========================================================================
 
+    // This function calculates the average monthly signups over the past 6 months, adjusting for seasonality and ensuring a minimum sample size to prevent skew from recent anomalies.
     private function calculateAverageSignups(): int
     {
-        $totalSignups = Member::where('created_at', '>=', now()->subMonths(6))->count();
-        return max((int) round($totalSignups / 6), 3);
+        $monthsWithData = Member::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym")
+            ->groupBy('ym')->get()->count();
+
+        $lookback     = max(min($monthsWithData, 6), 1);
+        $totalSignups = Member::where('created_at', '>=', now()->subMonths($lookback))->count();
+
+        return max((int) round($totalSignups / $lookback), 3);
     }
 
-    /**
-     * SUG #1 — Per-type churn rates with SUG #2 attendance modifier applied.
-     *
-     * Returns ['promo' => float, 'discount' => float, 'regular' => float].
-     * Fallbacks are IHRSA gym industry averages per member archetype.
-     */
+    // This function calculates adjusted churn rates for each membership type, blending historical data with default benchmarks to account for small sample sizes. It also applies a risk adjustment based on the current distribution of high-risk members in each category.
     private function calculateChurnRatesByType(): array
     {
-        if ($this->churnByTypeCache !== null) {
-            return $this->churnByTypeCache;
-        }
+        if ($this->churnByTypeCache !== null) return $this->churnByTypeCache;
 
-        // SUG #2 — Weighted 4-week attendance multiplier (stable, holiday-resistant)
         $attendanceMultiplier = $this->getWeightedAttendanceMultiplier();
 
-        $defaults = ['promo' => 0.75, 'discount' => 0.45, 'regular' => 0.20];
-        $rates    = [];
+        $defaults = [
+            'promo'    => 0.82,
+            'discount' => 0.38,
+            'regular'  => 0.29,
+        ];
+
+        $rates = [];
 
         foreach (array_keys($defaults) as $type) {
             $historical = Member::where('membership_type', $type)
@@ -406,11 +360,18 @@ class FutureTrendsChart extends ChartWidget
                 ->where('membership_expiry_date', '>=', now())
                 ->count();
 
-            // SUG #5 — Cohort age weighting: weight base churn toward veteran members
-            //   (new members 3-month lookback gives a fairer long-term signal)
-            $base = $historical > 0
-                ? ($historical - $retained) / $historical
-                : $defaults[$type];
+            if ($historical >= 10) {
+                $base = ($historical - $retained) / $historical;
+            } elseif ($historical > 0) {
+                $measured   = ($historical - $retained) / $historical;
+                $confidence = $historical / 10;
+                $base       = ($measured * $confidence) + ($defaults[$type] * (1 - $confidence));
+            } else {
+                $base = $defaults[$type];
+            }
+
+            $riskAdjustment = $this->getTypeRiskAdjustment($type);
+            $base           = $base + ($riskAdjustment * 0.20);
 
             $rates[$type] = max(0.05, min($base * $attendanceMultiplier, 0.95));
         }
@@ -418,10 +379,7 @@ class FutureTrendsChart extends ChartWidget
         return $this->churnByTypeCache = $rates;
     }
 
-    /**
-     * Weighted blended churn for display text.
-     * Weighted by actual active member counts per type — not a naive average.
-     */
+    // This function calculates a blended churn rate across all membership types, weighted by the current distribution of active members. This allows the projection to reflect the actual composition of the membership base.
     private function calculateBlendedChurnRate(array $churnRates): float
     {
         $typeCounts = Member::where('membership_expiry_date', '>=', now())
@@ -441,16 +399,70 @@ class FutureTrendsChart extends ChartWidget
         return round($blended, 4);
     }
 
-    /**
-     * SUG #2 — Weighted rolling 4-week attendance multiplier.
-     *
-     * Weights: most recent week 40%, then 30%, 20%, 10%.
-     * Compared against the prior 4-week window (days 29–56) as baseline.
-     *
-     * Attendance rising  → multiplier < 1  → churn goes DOWN
-     * Attendance falling → multiplier > 1  → churn goes UP
-     * Clamped 0.5–1.5 so a single freak week can't break the projection.
-     */
+    // This function calculates a churn risk score for an individual member based on multiple factors. The score is a float between 0 and 1, where higher values indicate greater risk of churn.
+    private function getMemberChurnRiskScore(Member $member): float
+    {
+        // Base risk starts at 0, and we add points for various risk factors. The final score is capped between 0 and 1.
+        $risk = 0.0;
+
+        $lastVisit      = $member->checkIns()->latest('created_at')->value('created_at');
+        $daysSinceVisit = $lastVisit ? now()->diffInDays($lastVisit) : 999;
+
+        // Recent attendance is the strongest signal. Not visiting for 20+ days is a major red flag, while 7-14 days is a moderate concern.
+        if ($daysSinceVisit >= 20)     $risk += 0.40;
+        elseif ($daysSinceVisit >= 14) $risk += 0.25;
+        elseif ($daysSinceVisit >= 7)  $risk += 0.10;
+
+        $monthsOld = (int) $member->created_at->diffInMonths(now());
+
+        // Tenure has a nuanced effect: very new members (0-1 month) are at higher risk due to buyer's remorse, while loyal members (12+ months) are less likely to churn.
+        if ($monthsOld <= 1)      $risk += 0.20;  
+        elseif ($monthsOld <= 6)  $risk += 0.15;  
+        elseif ($monthsOld >= 12) $risk -= 0.15;  
+
+        $daysToExpiry = (int) now()->diffInDays($member->membership_expiry_date, false);
+        
+        // Imminent expirations are a critical risk factor. Members with 7 or fewer days until expiry are at very high risk, while those with 8-14 days are moderately at risk.
+        if ($daysToExpiry <= 7)       $risk += 0.20;
+        elseif ($daysToExpiry <= 14)  $risk += 0.10;
+
+        // Membership type also influences risk. Short-term promos are more likely to churn, while regular long-term memberships indicate stronger commitment.
+        $risk += match ($member->membership_type) {
+            'promo'    => 0.20,
+            'discount' => 0.05,
+            default    => 0.0,
+        };
+
+        // Cap the final risk score between 0 and 1, and round to 4 decimal places for consistency.
+        return (float) max(0.0, min($risk, 1.0));
+    }
+
+    private function countHighRiskMembers(): int
+    {
+        $activeMembers = Member::where('membership_expiry_date', '>=', now())
+            ->with(['checkIns' => fn($q) => $q->latest('created_at')->limit(1)])
+            ->get();
+
+        return $activeMembers->filter(
+            fn($m) => $this->getMemberChurnRiskScore($m) > 0.60
+        )->count();
+    }
+
+    private function getTypeRiskAdjustment(string $type): float
+    {
+        $members = Member::where('membership_type', $type)
+            ->where('membership_expiry_date', '>=', now())
+            ->with(['checkIns' => fn($q) => $q->latest('created_at')->limit(1)])
+            ->get();
+
+        if ($members->isEmpty()) return 0.0;
+
+        $avgRisk = $members->avg(fn($m) => $this->getMemberChurnRiskScore($m));
+
+        return round($avgRisk - 0.5, 4); 
+    }
+
+    // This function calculates a multiplier based on recent attendance trends. If attendance has been declining, the multiplier will be less than 1 to increase projected churn rates. If attendance is stable or improving, the multiplier will be closer to or above 1 to reflect better retention.
     private function getWeightedAttendanceMultiplier(): float
     {
         $week4 = CheckIn::where('created_at', '>=', now()->subDays(7))->count();
@@ -458,37 +470,63 @@ class FutureTrendsChart extends ChartWidget
         $week2 = CheckIn::whereBetween('created_at', [now()->subDays(21), now()->subDays(14)])->count();
         $week1 = CheckIn::whereBetween('created_at', [now()->subDays(28), now()->subDays(21)])->count();
 
+        // To establish a baseline, we look at the total check-ins from the prior month (28-56 days ago). This period is far enough back to provide a stable reference point, while still being recent enough to reflect current engagement levels. If there were no check-ins in that period, we default to 1 to avoid division by zero in our trend calculation.
         $priorMonthTotal = CheckIn::whereBetween('created_at', [now()->subDays(56), now()->subDays(28)])->count();
+        // We calculate a baseline weekly attendance by averaging the total check-ins from the prior month. This gives us a reference point to compare recent attendance against. If we have no data, we default to 1 to avoid division by zero.
         $baselineWeekly  = $priorMonthTotal > 0 ? ($priorMonthTotal / 4) : 1;
 
+        // We weight the most recent week the heaviest, since it is the strongest signal of current engagement. A significant drop in attendance will result in a multiplier below 1, increasing projected churn rates.
         $recentWeighted = ($week4 * 0.40) + ($week3 * 0.30) + ($week2 * 0.20) + ($week1 * 0.10);
+        // The trend is calculated as the percentage change from the baseline weekly attendance. A negative trend indicates declining attendance, while a positive trend indicates improving engagement. We then convert this trend into a multiplier that will adjust our churn rates accordingly.
         $trend          = ($recentWeighted - $baselineWeekly) / $baselineWeekly;
 
         return (float) max(0.5, min(1.0 - $trend, 1.5));
     }
 
-    /**
-     * SUG #3 — Baguio-specific seasonal signup multiplier per calendar month.
-     *
-     * Applied to the avg monthly signups so projected lines curve naturally
-     * instead of being perfectly straight regardless of the time of year.
-     */
+    // This function provides a seasonal multiplier for new signups based on the month of the year. If we have at least 12 months of historical data, it calculates the multiplier based on actual signup trends. If not, it falls back to predefined estimates based on common seasonal patterns in fitness memberships.
     private function getSeasonalSignupMultiplier(int $month): float
     {
+        $earliestSignup = Member::min('created_at');
+        $monthsOfData   = $earliestSignup
+            ? (int) Carbon::parse($earliestSignup)->diffInMonths(now())
+            : 0;
+
+        if ($monthsOfData >= 12) {
+            return $this->getRealSeasonalMultiplier($month);
+        }
+
+        // Fallback estimates based on typical fitness industry trends: higher signups in January (New Year's resolutions) and late summer (prepping for fall), with a dip in the winter months after the holiday season.
         return match ($month) {
-            1       => 1.8,   // Resolutioners + post-holiday motivation
-            2       => 1.3,   // Panagbenga Festival visitor wave
-            3       => 0.7,   // Holy Week lull
-            4       => 0.5,   // Summer — non-student joiners scarce
-            5       => 0.5,   // Pre-enrolment calm
-            6       => 0.4,   // Rainy season starts
-            7       => 0.3,   // Deep rainy season (Baguio's lowest signup month)
-            8       => 1.5,   // 1st semester starts — student flood
-            9       => 1.2,   // Semester momentum carries
-            10      => 0.7,   // Mid-semester plateau
-            11      => 0.6,   // Pre-finals distraction
-            12      => 0.3,   // Christmas break exodus
-            default => 1.0,
+            1       => 1.80,  
+            2       => 1.10,  
+            3       => 0.70,  
+            4       => 0.50,  
+            5       => 0.50,  
+            6       => 0.40,  
+            7       => 0.30,  
+            8       => 1.50,  
+            9       => 1.20,  
+            10      => 0.70,  
+            11      => 0.45,  
+            12      => 0.30,  
+            default => 1.00,
         };
+    }
+
+    // This function calculates the actual seasonal multiplier for a given month based on historical signup data. It compares the average signups in that month to the overall monthly average to determine if it is a high or low season for new memberships.
+    private function getRealSeasonalMultiplier(int $month): float
+    {
+        $signupsByMonth = Member::selectRaw('MONTH(created_at) as month, COUNT(*) as total')
+            ->where('created_at', '>=', now()->subYears(2))
+            ->where('created_at', '<',  now()->subYear())  
+            ->groupBy('month')
+            ->pluck('total', 'month');
+
+        if ($signupsByMonth->isEmpty()) return 1.0;
+
+        $baseline  = $signupsByMonth->avg();
+        $thisMonth = $signupsByMonth->get($month, $baseline);
+
+        return $baseline > 0 ? round($thisMonth / $baseline, 2) : 1.0;
     }
 }

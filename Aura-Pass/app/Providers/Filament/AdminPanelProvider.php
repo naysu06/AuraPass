@@ -70,7 +70,7 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->databaseNotifications()
-            ->databaseNotificationsPolling('2s')
+            ->databaseNotificationsPolling('30s')
             // DIRECT TABLE CSS: This targets the Table directly instead of the Widget wrapper
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
