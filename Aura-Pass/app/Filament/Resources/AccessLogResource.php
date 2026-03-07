@@ -27,7 +27,7 @@ class AccessLogResource extends Resource
                     ->label('Photo')
                     ->circular()
                     ->disk('public') // Explicitly use the public disk
-                    ->defaultImageUrl(url('/images/placeholder-face.png')), // Fallback
+                    ->defaultImageUrl(url('/images/placeholder.jpg')), // Fallback
 
                 // 2. Member Name
                 Tables\Columns\TextColumn::make('member.name')

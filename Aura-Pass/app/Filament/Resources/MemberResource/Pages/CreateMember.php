@@ -13,18 +13,46 @@ use App\Mail\WelcomeEmail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+// NEW: Import Validation Exception
+use Illuminate\Validation\ValidationException;
+
 class CreateMember extends CreateRecord
 {
     protected static string $resource = MemberResource::class;
 
     /**
-     * 1. NEW LOGIC: Handle Webcam Image
+     * 1. HANDLE VALIDATION & WEBCAM IMAGE
      * This runs BEFORE the member is saved to the database.
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        // --- STRICT BACKEND VALIDATION ---
+
+        // 1. Enforce Email Requirement
+        if (empty($data['email'])) {
+            throw ValidationException::withMessages([
+                'data.email' => 'An active email address is required to send the Welcome QR Code.',
+            ]);
+        }
+
+        // 2. Enforce Photo Requirement (Must have EITHER an uploaded file OR a webcam capture)
+        $hasWebcamPhoto = !empty($data['webcam_data']);
+        $hasUploadedPhoto = !empty($data['profile_photo']);
+
+        if (!$hasWebcamPhoto && !$hasUploadedPhoto) {
+            throw ValidationException::withMessages([
+                // We map this error to 'webcam_data' so the red text appears right under the photo area
+                'data.webcam_data' => 'A profile photo is strictly required for identity verification. Please upload a file or take a picture.',
+            ]);
+        }
+
+        // --- END VALIDATION ---
+
+
+        // --- EXISTING WEBCAM PROCESSING ---
+        
         // Check if webcam data exists from our custom field
-        if (isset($data['webcam_data']) && $data['webcam_data']) {
+        if ($hasWebcamPhoto) {
             
             // A. Separate the metadata from the image data
             // Format: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
@@ -40,6 +68,7 @@ class CreateMember extends CreateRecord
                 Storage::disk('public')->put($filename, $image_base64);
                 
                 // D. Update the data array: Set 'profile_photo' to the file path
+                // This ensures the DB saves the path just like a normal file upload
                 $data['profile_photo'] = $filename;
             }
             
@@ -61,7 +90,9 @@ class CreateMember extends CreateRecord
 
         // Send the email to the queue.
         // It will be processed by the queue worker.
-        Mail::to($newMember->email)
-            ->later(now()->addSeconds(5), new WelcomeEmail($newMember));
+        if ($newMember->email) {
+            Mail::to($newMember->email)
+                ->later(now()->addSeconds(5), new WelcomeEmail($newMember));
+        }
     }
 }

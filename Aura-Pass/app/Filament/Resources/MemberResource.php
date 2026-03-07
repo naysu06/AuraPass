@@ -80,7 +80,7 @@ class MemberResource extends Resource
                     ->label('Photo')
                     ->circular()
                     ->disk('public') 
-                    ->defaultImageUrl(url('/images/placeholder-face.png')),
+                    ->defaultImageUrl(url('/images/placeholder.jpg')), // Fallback image if no photo is uploaded
 
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('email')->searchable(),
