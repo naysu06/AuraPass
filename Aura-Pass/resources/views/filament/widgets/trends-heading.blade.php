@@ -118,7 +118,7 @@
                             </svg>
                         </div>
                         <p class="text-xs text-orange-400">
-                            <span class="font-semibold">{{ $highRiskCount }} members</span>
+                            <span class="font-semibold">{{ $highRiskCount }} member/s</span>
                             haven't visited in 20+ days and are at high risk of not renewing.
                         </p>
                     </div>
