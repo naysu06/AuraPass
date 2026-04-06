@@ -23,6 +23,7 @@ class CheckIn extends Model
     /**
      * Get the member that owns the check-in.
      */
+    // This defines an inverse one-to-many relationship between CheckIn and Member models.
     public function member(): BelongsTo
     {
         return $this->belongsTo(Member::class);

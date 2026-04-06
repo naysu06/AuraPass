@@ -34,6 +34,7 @@ class ProcessQrScan implements ShouldQueue
         $member = Member::where('unique_id', $this->qrData)->first();
         $admins = User::all(); 
 
+        // Fetch gym settings for debounce, strict mode, and auto-checkout
         $settings = GymSetting::first();
         $debounceSeconds = $settings ? $settings->kiosk_debounce_seconds : 10;
         $strictMode = $settings ? $settings->strict_mode : false;

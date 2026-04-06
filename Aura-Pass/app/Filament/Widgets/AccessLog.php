@@ -4,15 +4,15 @@ namespace App\Filament\Widgets;
 
 use App\Models\CheckIn;
 use App\Models\Member;
-use App\Jobs\ProcessQrScan; // Assuming this matches your Sequence Diagram job!
+use App\Jobs\ProcessQrScan; 
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Placeholder; // <--- NEW: For displaying the photo
+use Filament\Forms\Components\Placeholder; 
 use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\Storage;     // <--- NEW: For fetching image URLs
-use Illuminate\Support\HtmlString;          // <--- NEW: For rendering the image tag
+use Illuminate\Support\Facades\Storage;     
+use Illuminate\Support\HtmlString;          
 
 class AccessLog extends BaseWidget
 {
@@ -59,12 +59,12 @@ class AccessLog extends BaseWidget
             ])
             ->paginated(false) 
             ->headerActions([
-                // 1. NEW: The Manual Check-In Button
+                // 1. Manual Check-In Button
                 Tables\Actions\Action::make('manual_check_in')
                     ->label('Manual Member Check-In')
                     ->icon('heroicon-m-user-plus')
-                    ->color('primary') // Makes it a prominent gold/amber button
-                    ->button() // Renders as a solid button instead of a bare link
+                    ->color('primary') 
+                    ->button() 
                     ->size('xs')
                     ->modalHeading('Manual Member Override')
                     ->modalDescription('Manually check in a member who forgot their QR code. This will run through standard system validation.')
@@ -72,16 +72,16 @@ class AccessLog extends BaseWidget
                     ->form([
                         Select::make('member_id')
                             ->label('Search Member Name')
-                            ->searchable() // Allows typing to search!
+                            ->searchable() 
                             ->options(Member::query()->pluck('name', 'id'))
                             ->required()
-                            ->live() // <--- NEW: This tells Filament to refresh the form when a member is selected!
+                            ->live() 
                             ->searchDebounce(500),
 
-                        // NEW: Dynamic Photo Verification Box
+                        // Dynamic Photo Verification Box with Expiration Status
                         Placeholder::make('identity_verification')
                             ->label('Identity Verification')
-                            ->hidden(fn (\Filament\Forms\Get $get) => empty($get('member_id'))) // Hide if no one is selected
+                            ->hidden(fn (\Filament\Forms\Get $get) => empty($get('member_id')))
                             ->content(function (\Filament\Forms\Get $get) {
                                 $memberId = $get('member_id');
                                 if (!$memberId) return null;
@@ -93,14 +93,24 @@ class AccessLog extends BaseWidget
                                 $photoUrl = $member->profile_photo 
                                     ? Storage::disk('public')->url($member->profile_photo) 
                                     : url('/images/placeholder.jpg');
-                                    //
 
-                                // Render the photo in a nice styled card
+                                // Check expiration status for UI feedback
+                                // (Assumes expiry_date is cast to a date in the Member model)
+                                $isExpired = $member->membership_expiry_date && $member->membership_expiry_date < now()->startOfDay();
+                                
+                                $statusLabel = $isExpired 
+                                    ? '<span class="mt-2 px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full uppercase">Expired Membership</span>'
+                                    : '<span class="mt-2 px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full uppercase">Active Member</span>';
+
+                                $borderColor = $isExpired ? '#ef4444' : 'white'; // Red border if expired
+
+                                // Render the photo in a styled card
                                 return new HtmlString('
                                     <div class="flex flex-col items-center justify-center p-4 mt-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-inner">
-                                        <img src="' . $photoUrl . '" alt="Member Photo" style="width: 140px; height: 140px; object-fit: cover; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); border: 4px solid white;" />
+                                        <img src="' . $photoUrl . '" alt="Member Photo" style="width: 140px; height: 140px; object-fit: cover; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); border: 4px solid ' . $borderColor . ';" />
                                         <span class="mt-4 text-sm font-semibold text-gray-900 dark:text-white">' . $member->name . '</span>
-                                        <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">Please verify identity before proceeding.</span>
+                                        ' . $statusLabel . '
+                                        <span class="text-xs text-gray-500 dark:text-gray-400 mt-2">Please verify identity before proceeding.</span>
                                     </div>
                                 ');
                             }),
@@ -109,11 +119,21 @@ class AccessLog extends BaseWidget
                         $member = Member::find($data['member_id']);
                         
                         if ($member) {
-                            // Dispatch the exact same Async Queue Job used by the physical scanner!
-                            // (Update the Job name here if it differs slightly from your diagram)
+                            // Check if membership is expired before dispatching the job
+                            if ($member->membership_expiry_date && $member->membership_expiry_date < now()->startOfDay()) {
+                                Notification::make()
+                                ->title('Check-In Denied')
+                                ->body("Cannot check in {$member->name}. Their membership expired on " . $member->membership_expiry_date->format('M d, Y') . ".")
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+                    
+                                return; // Stop process here
+                            }
+
+                            // If active, dispatch the scanner job
                             dispatch(new ProcessQrScan($member->unique_id));
                             
-                            // Send a toast notification to Coach Jen
                             Notification::make()
                                 ->title('Manual Check-In Queued')
                                 ->body("Processing entry for {$member->name}...")
@@ -122,7 +142,7 @@ class AccessLog extends BaseWidget
                         }
                     }),
 
-                // 2. EXISTING: The Full History Link
+                // 2. The Full History Link
                 Tables\Actions\Action::make('history')
                     ->label('Full History')
                     ->icon('heroicon-m-chevron-right')

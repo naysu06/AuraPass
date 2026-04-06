@@ -211,7 +211,8 @@ class FutureTrendsChart extends ChartWidget
     // CORE PROJECTION ENGINE
     // =========================================================================
 
-    // This function generates a comprehensive projection of future membership trends based on historical data, current active members, and calculated churn rates. It returns an array containing all the necessary data for rendering the chart and summary statistics.
+    // This function generates a comprehensive projection of future membership trends based on historical data, current active members, 
+    // and calculated churn rates.
     private function getProjection(): array
     {
         if ($this->projectionCache !== null) return $this->projectionCache;
@@ -250,7 +251,7 @@ class FutureTrendsChart extends ChartWidget
         $totalRenewals    = 0;
         $expiryByMonthRaw = [];
 
-        // Loop through each future month and calculate the projected active members based on expirations, renewals, and new signups. We also track the month with the highest expirations to alert the user.
+        // Loop through each future month and calculate the projected active members based on expirations, renewals, and new signups. 
         for ($i = 1; $i <= $monthsToProject; $i++) {
             $targetMonth = now()->addMonths($i);
             $monthKey    = $targetMonth->format('Y-m');
@@ -301,7 +302,7 @@ class FutureTrendsChart extends ChartWidget
             range(1, $monthsToProject)
         ));
 
-        // Cache the entire projection result for this render cycle to optimize performance, since multiple methods may request the same data.
+        // Cache the entire projection result for this render cycle to optimize performance.
         return $this->projectionCache = [
             'monthsToProject'  => $monthsToProject,
             'blendedChurnRate' => $blendedChurnRate,
@@ -323,7 +324,7 @@ class FutureTrendsChart extends ChartWidget
     // HELPERS
     // =========================================================================
 
-    // This function calculates the average monthly signups over the past 6 months, adjusting for seasonality and ensuring a minimum sample size to prevent skew from recent anomalies.
+    // This function calculates the average monthly signups over the past 6 months, 
     private function calculateAverageSignups(): int
     {
         $monthsWithData = Member::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym")
@@ -335,19 +336,17 @@ class FutureTrendsChart extends ChartWidget
         return max((int) round($totalSignups / $lookback), 3);
     }
 
-    // This function calculates adjusted churn rates for each membership type, blending historical data with default benchmarks to account for small sample sizes. It also applies a risk adjustment based on the current distribution of high-risk members in each category.
+    // This function calculates adjusted churn rates for each membership type, 
+    // blending historical data with default benchmarks to account for small sample sizes.
     private function calculateChurnRatesByType(): array
     {
         if ($this->churnByTypeCache !== null) return $this->churnByTypeCache;
-
         $attendanceMultiplier = $this->getWeightedAttendanceMultiplier();
-
         $defaults = [
             'promo'    => 0.82,
             'discount' => 0.38,
             'regular'  => 0.29,
         ];
-
         $rates = [];
 
         foreach (array_keys($defaults) as $type) {
@@ -379,7 +378,8 @@ class FutureTrendsChart extends ChartWidget
         return $this->churnByTypeCache = $rates;
     }
 
-    // This function calculates a blended churn rate across all membership types, weighted by the current distribution of active members. This allows the projection to reflect the actual composition of the membership base.
+    // This function calculates a blended churn rate across all membership types, 
+    // weighted by the current distribution of active members. 
     private function calculateBlendedChurnRate(array $churnRates): float
     {
         $typeCounts = Member::where('membership_expiry_date', '>=', now())
@@ -399,34 +399,25 @@ class FutureTrendsChart extends ChartWidget
         return round($blended, 4);
     }
 
-    // This function calculates a churn risk score for an individual member based on multiple factors. The score is a float between 0 and 1, where higher values indicate greater risk of churn.
+    // This function calculates a churn risk score for an individual member based on multiple factors. 
     private function getMemberChurnRiskScore(Member $member): float
     {
-        // Base risk starts at 0, and we add points for various risk factors. The final score is capped between 0 and 1.
         $risk = 0.0;
-
         $lastVisit      = $member->checkIns()->latest('created_at')->value('created_at');
         $daysSinceVisit = $lastVisit ? now()->diffInDays($lastVisit) : 999;
-
-        // Recent attendance is the strongest signal. Not visiting for 20+ days is a major red flag, while 7-14 days is a moderate concern.
         if ($daysSinceVisit >= 20)     $risk += 0.40;
         elseif ($daysSinceVisit >= 14) $risk += 0.25;
         elseif ($daysSinceVisit >= 7)  $risk += 0.10;
 
         $monthsOld = (int) $member->created_at->diffInMonths(now());
-
-        // Tenure has a nuanced effect: very new members (0-1 month) are at higher risk due to buyer's remorse, while loyal members (12+ months) are less likely to churn.
         if ($monthsOld <= 1)      $risk += 0.20;  
         elseif ($monthsOld <= 6)  $risk += 0.15;  
         elseif ($monthsOld >= 12) $risk -= 0.15;  
 
         $daysToExpiry = (int) now()->diffInDays($member->membership_expiry_date, false);
-        
-        // Imminent expirations are a critical risk factor. Members with 7 or fewer days until expiry are at very high risk, while those with 8-14 days are moderately at risk.
         if ($daysToExpiry <= 7)       $risk += 0.20;
         elseif ($daysToExpiry <= 14)  $risk += 0.10;
 
-        // Membership type also influences risk. Short-term promos are more likely to churn, while regular long-term memberships indicate stronger commitment.
         $risk += match ($member->membership_type) {
             'promo'    => 0.20,
             'discount' => 0.05,
@@ -437,6 +428,7 @@ class FutureTrendsChart extends ChartWidget
         return (float) max(0.0, min($risk, 1.0));
     }
 
+    // 
     private function countHighRiskMembers(): int
     {
         $activeMembers = Member::where('membership_expiry_date', '>=', now())
@@ -462,28 +454,25 @@ class FutureTrendsChart extends ChartWidget
         return round($avgRisk - 0.5, 4); 
     }
 
-    // This function calculates a multiplier based on recent attendance trends. If attendance has been declining, the multiplier will be less than 1 to increase projected churn rates. If attendance is stable or improving, the multiplier will be closer to or above 1 to reflect better retention.
+    // This function calculates a multiplier based on recent attendance trends.
     private function getWeightedAttendanceMultiplier(): float
     {
         $week4 = CheckIn::where('created_at', '>=', now()->subDays(7))->count();
         $week3 = CheckIn::whereBetween('created_at', [now()->subDays(14), now()->subDays(7)])->count();
         $week2 = CheckIn::whereBetween('created_at', [now()->subDays(21), now()->subDays(14)])->count();
         $week1 = CheckIn::whereBetween('created_at', [now()->subDays(28), now()->subDays(21)])->count();
-
-        // To establish a baseline, we look at the total check-ins from the prior month (28-56 days ago). This period is far enough back to provide a stable reference point, while still being recent enough to reflect current engagement levels. If there were no check-ins in that period, we default to 1 to avoid division by zero in our trend calculation.
+        // To establish a baseline, we look at the total check-ins from the prior month (28-56 days ago). 
         $priorMonthTotal = CheckIn::whereBetween('created_at', [now()->subDays(56), now()->subDays(28)])->count();
-        // We calculate a baseline weekly attendance by averaging the total check-ins from the prior month. This gives us a reference point to compare recent attendance against. If we have no data, we default to 1 to avoid division by zero.
-        $baselineWeekly  = $priorMonthTotal > 0 ? ($priorMonthTotal / 4) : 1;
-
-        // We weight the most recent week the heaviest, since it is the strongest signal of current engagement. A significant drop in attendance will result in a multiplier below 1, increasing projected churn rates.
+        $baselineWeekly  = $priorMonthTotal > 0 ? ($priorMonthTotal / 4) : 1; 
         $recentWeighted = ($week4 * 0.40) + ($week3 * 0.30) + ($week2 * 0.20) + ($week1 * 0.10);
-        // The trend is calculated as the percentage change from the baseline weekly attendance. A negative trend indicates declining attendance, while a positive trend indicates improving engagement. We then convert this trend into a multiplier that will adjust our churn rates accordingly.
-        $trend          = ($recentWeighted - $baselineWeekly) / $baselineWeekly;
+        $trend = ($recentWeighted - $baselineWeekly) / $baselineWeekly;
 
         return (float) max(0.5, min(1.0 - $trend, 1.5));
     }
 
-    // This function provides a seasonal multiplier for new signups based on the month of the year. If we have at least 12 months of historical data, it calculates the multiplier based on actual signup trends. If not, it falls back to predefined estimates based on common seasonal patterns in fitness memberships.
+    // This function provides a seasonal multiplier for new signups based on the month of the year. 
+    // If we have at least 12 months of historical data, it calculates the multiplier based on actual signup trends. 
+    // If not, it falls back to predefined estimates.
     private function getSeasonalSignupMultiplier(int $month): float
     {
         $earliestSignup = Member::min('created_at');
@@ -495,7 +484,6 @@ class FutureTrendsChart extends ChartWidget
             return $this->getRealSeasonalMultiplier($month);
         }
 
-        // Fallback estimates based on typical fitness industry trends: higher signups in January (New Year's resolutions) and late summer (prepping for fall), with a dip in the winter months after the holiday season.
         return match ($month) {
             1       => 1.80,  
             2       => 1.10,  
@@ -513,7 +501,7 @@ class FutureTrendsChart extends ChartWidget
         };
     }
 
-    // This function calculates the actual seasonal multiplier for a given month based on historical signup data. It compares the average signups in that month to the overall monthly average to determine if it is a high or low season for new memberships.
+    // This function calculates the actual seasonal multiplier for a given month based on historical signup data. 
     private function getRealSeasonalMultiplier(int $month): float
     {
         $signupsByMonth = Member::selectRaw('MONTH(created_at) as month, COUNT(*) as total')

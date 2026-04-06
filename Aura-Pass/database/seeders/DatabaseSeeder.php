@@ -23,8 +23,8 @@ class DatabaseSeeder extends Seeder
 
         // 2. RUN YOUR OTHER SEEDERS (Optional)
         // If you want fake data generated automatically, uncomment these:
-        $this->call([
-             CheckInSeeder::class,
-         ]);
+        // $this->call([
+        //      CheckInSeeder::class,
+        //  ]);
     }
 }
