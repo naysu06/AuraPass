@@ -27,6 +27,7 @@ use App\Filament\Widgets\DataAnalyticsHeader;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Support\HtmlString;
 use App\Filament\Widgets\FutureTrendsChart;
+use Filament\Navigation\MenuItem;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -41,6 +42,7 @@ class AdminPanelProvider extends PanelProvider
                 'primary' => Color::Amber,
             ])
             ->brandName('AuraPass')
+            ->favicon(asset('favicon.ico'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
@@ -71,6 +73,13 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->databaseNotifications()
             ->databaseNotificationsPolling('30s')
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label('Shut Down System')
+                    ->url(fn (): string => route('system.stop'))
+                    ->icon('heroicon-o-power') // A nice power button icon
+                    ->color('danger') // Automatically styles the text and icon red!
+            ])
             // DIRECT TABLE CSS: This targets the Table directly instead of the Widget wrapper
             ->renderHook(
                 PanelsRenderHook::HEAD_END,

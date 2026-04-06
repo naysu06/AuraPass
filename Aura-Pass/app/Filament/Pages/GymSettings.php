@@ -31,7 +31,7 @@ class GymSettings extends Page
             'camera_mirror' => true,
             'kiosk_debounce_seconds' => 10,
             'strict_mode' => false,
-            'auto_checkout_hours' => 12,
+            'auto_checkout_hours' => 4,
             'email_reminders_enabled' => true,
         ]);
 

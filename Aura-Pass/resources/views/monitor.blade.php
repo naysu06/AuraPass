@@ -6,6 +6,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
     <title>Gym Check-in Kiosk</title>
+
+    <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     
     <script>
         window.kioskConfig = {
@@ -52,14 +54,12 @@
 </head>
 <body>
 
-    <!-- 1. FETCH SETTINGS FOR MIRRORING -->
     @php
         $settings = \App\Models\GymSetting::first();
         // Default to true (mirrored) if not set
         $mirror = $settings ? $settings->camera_mirror : true;
     @endphp
 
-    <!-- FLOATING CLOCK WIDGET -->
     <div class="fixed top-6 right-8 z-50 text-right pointer-events-none">
         <div id="clock-time" class="text-5xl font-bold text-white font-mono tracking-wider" style="text-shadow: 2px 2px 8px rgba(0,0,0,0.6);">
             --:--
@@ -72,7 +72,6 @@
     <div class="kiosk-layout">
         <div id="status-panel" class="bg-default">
             <div id="message" class="show flex flex-col items-center"> 
-                <!-- Member Photo -->
                 <img id="member-photo" src="" alt="Member Face" />
 
                 <h1 id="status-text">WELCOME TO QUADS-FURUKAWA GYM</h1>
@@ -88,8 +87,6 @@
                 <label for="camera-select" class="block text-sm font-medium text-white mb-2">Select Camera:</label>
                 <select id="camera-select"></select>
                 
-                <!-- 2. APPLY INVERTED DYNAMIC MIRRORING -->
-                <!-- Swapped logic: 1 (Normal) when True, -1 (Flipped) when False to correct the opposite behavior -->
                 <div class="mt-4" style="transform: scaleX({{ $mirror ? 1 : -1 }}); display: flex; width: 100%; position: relative;">
                     <video id="qr-video"></video>
                 </div>
@@ -97,5 +94,27 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Checks if the local server is still alive every 2 seconds
+        setInterval(() => {
+            // We use { method: 'HEAD', cache: 'no-store' } to make the ping extremely lightweight
+            fetch(window.location.href, { method: 'HEAD', cache: 'no-store' })
+                .catch(() => {
+                    // If the fetch fails, it means Apache was killed by the Stop.bat script.
+                    
+                    // Attempt to close the tab automatically
+                    window.close();
+                    
+                    // Fallback: If the browser's strict security prevents auto-closing, 
+                    // gracefully turn the screen dark instead of showing a Chrome error.
+                    document.body.innerHTML = `
+                        <div style="background-color: #0f172a; color: #64748b; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: ui-sans-serif, system-ui, sans-serif;">
+                            <h2>System Offline. You may close this tab.</h2>
+                        </div>
+                    `;
+                });
+        }, 2000);
+    </script>
 </body>
 </html>
