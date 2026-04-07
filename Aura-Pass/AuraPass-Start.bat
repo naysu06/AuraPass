@@ -30,7 +30,7 @@ SET "APP_URL=http://localhost:8000" :: Change this if your APP_URL is different 
 SET "LARAVEL_DIR=%ROOT%"
 
 :: ── 1. PORTABLE SAFETY NET (Self-Healing) ───────────────
-"%PHP_BIN%" "%LARAVEL_DIR%artisan" config:clear --force >nul 2>&1
+"%PHP_BIN%" "%LARAVEL_DIR%artisan" config:clear >nul 2>&1
 "%PHP_BIN%" "%LARAVEL_DIR%artisan" storage:link --force >nul 2>&1
 
 :: ── 2. START DATABASES & SERVERS (Background) ───────────
@@ -43,6 +43,8 @@ tasklist /FI "IMAGENAME eq httpd.exe" 2>NUL | find /I /N "httpd.exe" >NUL
 IF %ERRORLEVEL% NEQ 0 (
     START "" /B "%APACHE_BIN%\httpd.exe" -f "%APACHE_CONF%"
 )
+:: After starting Apache/MySQL
+timeout /t 5 /nobreak >nul
 
 :: ── 3. START QUEUE WORKER ───────────────────────────────
 taskkill /FI "WINDOWTITLE eq AuraPass Queue Worker*" /F /T >nul 2>&1
