@@ -22,3 +22,24 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# --- AuraPass Packaging ---
+# Ignore the folder where Inno Setup creates the final .exe
+/dist/
+*.exe
+
+# --- Laravel System Junk ---
+# Ignore compiled views (prevents "View not found" errors on other PCs)
+/storage/framework/views/*.php
+
+# Ignore active user sessions (prevents you from being logged in on the panelist's PC)
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+
+# Ignore cache data
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitignore
+
+# Ignore any local SQLite databases if you ever use them for testing
+/*.sqlite
+/*.sqlite-journal

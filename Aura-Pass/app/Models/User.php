@@ -5,10 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Filament\Models\Contracts\HasName; // <-- NEW: Required for Filament
+use Filament\Models\Contracts\HasName; // <-- Existing: Required for Filament display names
+use Filament\Models\Contracts\FilamentUser; // <-- NEW: Required for production access
+use Filament\Panel; // <-- NEW: Required for production access
 
 // Implementing HasName tells Filament what to display instead of 'name'
-class User extends Authenticatable implements HasName
+// Implementing FilamentUser tells Filament who is allowed in the dashboard
+class User extends Authenticatable implements HasName, FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
@@ -47,10 +50,21 @@ class User extends Authenticatable implements HasName
     }
 
     /**
-     * NEW: Filament will call this method to get the user's display name.
+     * Filament will call this method to get the user's display name.
      */
     public function getFilamentName(): string
     {
         return $this->username;
+    }
+
+    /**
+     * NEW: Determines if the user can access the Filament panel in production.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // By returning true, you bypass the production 403 Forbidden error.
+        // If you ever want to restrict this in the future, you could change this to:
+        // return $this->role === 'superadmin';
+        return true;
     }
 }

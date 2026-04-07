@@ -26,12 +26,12 @@ SET "APACHE_CONF=%LARAGON_DIR%\bin\apache\httpd-2.4.62-240904-win64-VS17\conf\ht
 SET "MYSQL_INI=%LARAGON_DIR%\bin\mysql\mysql-8.4.3-winx64\my.ini"
 SET "PHP_BIN=%LARAGON_DIR%\bin\php\php-8.3.26-Win32-vs16-x64\php.exe" 
 
-SET "APP_URL=https://aurapass.test"
+SET "APP_URL=http://localhost:8000" :: Change this if your APP_URL is different in .env.production
 SET "LARAVEL_DIR=%ROOT%"
 
 :: ── 1. PORTABLE SAFETY NET (Self-Healing) ───────────────
-"%PHP_BIN%" "%LARAVEL_DIR%artisan" config:clear >nul 2>&1
-"%PHP_BIN%" "%LARAVEL_DIR%artisan" storage:link >nul 2>&1
+"%PHP_BIN%" "%LARAVEL_DIR%artisan" config:clear --force >nul 2>&1
+"%PHP_BIN%" "%LARAVEL_DIR%artisan" storage:link --force >nul 2>&1
 
 :: ── 2. START DATABASES & SERVERS (Background) ───────────
 "%MYSQL_BIN%\mysqladmin.exe" -u root status >nul 2>&1
