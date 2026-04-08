@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define AppName      "AuraPass"
-#define AppVersion   "1.0.1"
+#define AppVersion   "1.0.4"
 #define AppPublisher "AuraPass"
 #define AppURL       "http://localhost:8000"
 
