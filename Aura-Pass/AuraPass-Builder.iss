@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define AppName      "AuraPass"
-#define AppVersion   "1.0.4"
+#define AppVersion   "1.0.6"
 #define AppPublisher "AuraPass"
 #define AppURL       "http://localhost:8000"
 
@@ -82,11 +82,15 @@ Source: ".env.production"; DestDir: "{app}"; DestName: ".env"; Flags: ignorevers
 
 ; ── Laragon Portable Stack ───────────────────────────────
 Source: "C:\laragon\bin\apache\{#ApacheDir}\*"; DestDir: "{app}\laragon\bin\apache\{#ApacheDir}"; Flags: recursesubdirs createallsubdirs ignoreversion
-; Copy everything EXCEPT the data folder
 Source: "C:\laragon\bin\mysql\{#MySQLDir}\*"; DestDir: "{app}\laragon\bin\mysql\{#MySQLDir}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "data\*"
-; Copy the data folder ONLY if it doesn't already exist
 Source: "C:\laragon\data\mysql-8.4\*"; DestDir: "{app}\laragon\bin\mysql\{#MySQLDir}\data"; Flags: recursesubdirs createallsubdirs uninsneveruninstall onlyifdoesntexist
-Source: "C:\laragon\bin\php\{#PHPDir}\*";       DestDir: "{app}\laragon\bin\php\{#PHPDir}";       Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "C:\laragon\bin\php\{#PHPDir}\*"; DestDir: "{app}\laragon\bin\php\{#PHPDir}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; ── Step 1 & 2: Redist Files ─────────────────────────────
+; Copy the Redist DLLs into the PHP root so they are next to php.exe
+Source: "installer\php-redist\*.dll"; DestDir: "{app}\laragon\bin\php\{#PHPDir}"; Flags: ignoreversion
+; Use x64 version for your 64-bit PHP setup
+Source: "installer\VC_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 ; ── Config Files ─────────────────────────────────────────
 Source: "installer\httpd.conf"; DestDir: "{app}\laragon\bin\apache\{#ApacheDir}\conf"; Flags: ignoreversion
@@ -105,25 +109,28 @@ Source: "LICENSE.txt";     DestDir: "{app}";        Flags: ignoreversion
 Name: "{group}\{#AppName}";             Filename: "{app}\AuraPass-Start.bat"; IconFilename: "{app}\assets\icon.ico"; Comment: "Launch AuraPass"; Flags: runminimized
 Name: "{group}\Stop {#AppName}";        Filename: "{app}\AuraPass-Stop.bat";  IconFilename: "{app}\assets\icon.ico"; Comment: "Stop AuraPass"; Flags: runminimized
 Name: "{group}\Uninstall {#AppName}";   Filename: "{uninstallexe}"
-
 Name: "{autodesktop}\{#AppName}";       Filename: "{app}\AuraPass-Start.bat"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon; Flags: runminimized
 
 [Run]
-; 1. Create the Symlink during Installation (Ensures it works out of the box)
+; Install Visual C++ silently if it's missing (Corrected filename to x64)
+Filename: "{tmp}\VC_redist.x64.exe"; Parameters: "/quiet /norestart"; \
+    StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Check: not IsVCRedistInstalled
+
+; Create the Symlink
 Filename: "{app}\laragon\bin\php\{#PHPDir}\php.exe"; \
   Parameters: """{app}\artisan"" storage:link --force"; \
   WorkingDir: "{app}"; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Linking public storage assets..."
 
-; 2. Optimize Laravel
+; Optimize Laravel
 Filename: "{app}\laragon\bin\php\{#PHPDir}\php.exe"; \
   Parameters: """{app}\artisan"" optimize"; \
   WorkingDir: "{app}"; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Optimizing system performance..."
 
-; 3. Launch AuraPass
+; Launch AuraPass
 Filename: "{cmd}"; \
   Parameters: "/c ""{app}\AuraPass-Start.bat"""; \
   Description: "Launch {#AppName} now"; \
@@ -135,6 +142,16 @@ Filename: "{app}\AuraPass-Stop.bat"; \
   Flags: runhidden waituntilterminated
 
 [Code]
+// STEP 3: Logic to check if the C++ Redist is already on the PC
+function IsVCRedistInstalled: Boolean;
+var
+  Version: String;
+begin
+  // Checks for Visual C++ 2015-2022 Redistributable (x64)
+  Result := RegQueryStringValue(HKEY_LOCAL_MACHINE, 
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Version', Version);
+end;
+
 procedure InitializeWizard;
 begin
   WizardForm.WelcomeLabel2.Caption :=

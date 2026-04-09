@@ -9,12 +9,13 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // 1. Your Existing Email Reminder
+// We set this to run every minute.
 Schedule::command('gym:remind-expiring')
-    ->dailyAt('08:00') // Run every day at 8 AM
+    ->everyMinute() // Run every day at 8 AM
     ->timezone('Asia/Manila');
 
 // 2. NEW: The Auto-Checkout Sweeper
-// We set this to run every hour. 
+// We set this to run every minute. 
 Schedule::command('gym:auto-checkout')
-    ->hourly()
+    ->everyMinute()
     ->timezone('Asia/Manila');

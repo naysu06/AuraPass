@@ -26,27 +26,34 @@ echo   Initiating AuraPass System Shutdown...
 echo  =============================================
 echo.
 
-:: ── NEW: The Buffer ──────────────────────────────────────
+:: ── 1. The Buffer ──────────────────────────────────────
 :: Wait 2 seconds before killing anything. 
-:: This allows the Laravel controller to finish sending the "close tab" JavaScript back to Chrome.
 timeout /t 2 /nobreak >nul
 
-:: ── Stop Background Workers ──────────────────────────────
+:: ── 2. Force Logout (Clear Sessions) ───────────────────
+:: This wipes the session files so the user must log in again on next boot.
+echo  [..] Clearing active sessions (Forcing Logout)...
+if exist "%ROOT%storage\framework\sessions" (
+    del /S /Q "%ROOT%storage\framework\sessions\*" >nul 2>&1
+)
+echo  [OK] Session data purged.
+
+:: ── 3. Stop Background Workers ──────────────────────────
 echo  [..] Stopping Queue Workers & Scanners...
 taskkill /F /IM php.exe >nul 2>&1
 taskkill /FI "WINDOWTITLE eq AuraPass Queue Worker*" /F /T >nul 2>&1
 echo  [OK] Background engines terminated.
 
-:: ── Stop Laragon GUI (Prevents auto-restarting) ──────────
+:: ── 4. Stop Laragon GUI (Prevents auto-restarting) ──────
 echo  [..] Closing Laragon Manager...
 taskkill /F /IM laragon.exe >nul 2>&1
 
-:: ── Stop Apache ──────────────────────────────────────────
+:: ── 5. Stop Apache ──────────────────────────────────────
 echo  [..] Stopping Apache Web Server...
 taskkill /F /IM httpd.exe >nul 2>&1
 echo  [OK] Apache offline.
 
-:: ── Stop MySQL ───────────────────────────────────────────
+:: ── 6. Stop MySQL ───────────────────────────────────────
 echo  [..] Stopping MySQL Database...
 "%MYSQL_BIN%\mysqladmin.exe" -u root shutdown >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
