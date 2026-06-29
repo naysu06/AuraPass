@@ -16,7 +16,9 @@ class AuditLogService
         $isConsole = App::runningInConsole();
 
         $logData = [
-            'user_id'    => Auth::id() ?? null, // Will naturally be null on system boot
+            // Will naturally be null on system boot
+            // Use forced ID if provided, otherwise fallback to Auth::id()
+            'user_id'    => $forceUserId ?? Auth::id(),
             'activity'   => $activity,
             'details'    => $details,
             'ip_address' => $isConsole ? '127.0.0.1' : Request::ip(),
