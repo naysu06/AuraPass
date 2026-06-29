@@ -132,7 +132,7 @@ class AccessLog extends BaseWidget
                             }
 
                             // If active, dispatch the scanner job
-                            dispatch(new ProcessQrScan($member->unique_id));
+                            ProcessQrScan::dispatch($member->unique_id, true);
                             
                             Notification::make()
                                 ->title('Manual Check-In Queued')

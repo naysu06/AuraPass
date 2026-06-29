@@ -98,6 +98,7 @@ class AccessLogResource extends Resource
     {
         return [
             'index' => Pages\ListAccessLog::route('/'),
+            'audit-log' => Pages\ViewAuditLog::route('/audit-log'),
             // 'create' => Pages\CreateAccessLog::route('/create'), // Disabled creation via UI
             // 'edit' => Pages\EditAccessLog::route('/{record}/edit'), // REMOVED: Disables editing logic
         ];

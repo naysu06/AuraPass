@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Events\MemberCheckedIn;
+use App\Events\MemberCheckedInManually;
 use App\Events\MemberCheckedOut;
+use App\Events\MemberCheckedOutManually;
 use App\Events\MemberScanFailed;
 use App\Models\Member;
 use App\Models\User; 
@@ -113,7 +115,11 @@ class ProcessQrScan implements ShouldQueue
                 'check_out_at' => $activeSession->freshTimestamp(),
             ]);
 
-            event(new MemberCheckedOut($member));
+            if ($this->force) {
+                event(new MemberCheckedOutManually($member));
+            } else {
+                event(new MemberCheckedOut($member));
+            }
 
             Notification::make()
                 ->title('Member Left')
@@ -132,7 +138,11 @@ class ProcessQrScan implements ShouldQueue
             // CHECK IN
             $member->checkIns()->create();
 
-            event(new MemberCheckedIn($member));
+            if ($this->force) {
+                event(new MemberCheckedInManually($member));
+            } else {
+                event(new MemberCheckedIn($member));
+            }
 
             Notification::make()
                 ->title('Member Entered')

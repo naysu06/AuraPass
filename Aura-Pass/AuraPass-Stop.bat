@@ -26,6 +26,18 @@ echo   Initiating AuraPass System Shutdown...
 echo  =============================================
 echo.
 
+:: ── 0. LOG SYSTEM SHUTDOWN TO DATABASE ──────────────────
+echo  [..] Recording system shutdown event...
+:: Find the PHP path manually or dynamically using your existing variables
+IF EXIST "%ROOT%laragon" (
+    SET "PHP_EXE=%ROOT%laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+) ELSE (
+    SET "PHP_EXE=C:\laragon\bin\php\php-8.3.26-Win32-vs16-x64\php.exe"
+)
+
+"%PHP_EXE%" "%ROOT%artisan" app:log-system-shutdown >> "%ROOT%storage\logs\system_events.log" 2>&1
+echo  [OK] Shutdown event stored.
+
 :: ── 1. The Buffer ──────────────────────────────────────
 :: Wait 2 seconds before killing anything. 
 timeout /t 2 /nobreak >nul

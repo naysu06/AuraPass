@@ -25,7 +25,7 @@ SET "MYSQL_INI=%LARAGON_DIR%\bin\mysql\mysql-8.4.3-winx64\my.ini"
 SET "PHP_BIN=%LARAGON_DIR%\bin\php\php-8.3.26-Win32-vs16-x64\php.exe" 
 
 :: Note: Change to http://localhost:8000 if not using a custom vhost
-SET "APP_URL=http://localhost:8000"
+SET "APP_URL=https://aurapass.test"
 SET "LARAVEL_DIR=%ROOT%"
 
 :: ── 1. START DATABASES & SERVERS (Background) ───────────
@@ -47,6 +47,10 @@ IF %ERRORLEVEL% NEQ 0 (
 :: This prevents the "Connection Refused" errors in your logs.
 echo [..] Waiting for system stability...
 timeout /t 6 /nobreak >nul
+
+:: ── 1.5 LOG SYSTEM STARTUP TO DATABASE ──────────────────
+echo [..] Recording system startup event...
+"%PHP_BIN%" "%LARAVEL_DIR%artisan" app:log-system-start >> "%LARAVEL_DIR%storage\logs\system_events.log" 2>&1
 
 :: ── 2. PORTABLE SAFETY NET (Self-Healing) ───────────────
 echo [..] Optimizing Environment...
