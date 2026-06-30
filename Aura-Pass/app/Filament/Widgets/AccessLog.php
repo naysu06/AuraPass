@@ -30,9 +30,9 @@ class AccessLog extends BaseWidget
     public function table(Table $table): Table
     {
         return $table
-            ->poll('20s') // Refresh every 20 seconds
+            ->poll('15s') // Refresh every 15 seconds
             ->query(
-                CheckIn::query()->latest()->limit(5)
+                CheckIn::query()->whereHas('member')->latest()->limit(5)
             )
             ->columns([
                 Tables\Columns\TextColumn::make('member.name')

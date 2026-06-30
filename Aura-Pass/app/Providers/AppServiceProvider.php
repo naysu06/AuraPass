@@ -8,6 +8,8 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Event;
 use App\Services\AuditLogService;
+use App\Models\User;
+use App\Observers\UserObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,16 +28,23 @@ class AppServiceProvider extends ServiceProvider
     {
         // Keep your existing Member Observer
         Member::observe(MemberObserver::class);
+        User::observe(UserObserver::class);
 
         // Listen for any user logging out of the application
         Event::listen(function (Logout $event) {
             if ($event->user) {
-                // Safely grab the username attribute from your User model
                 $username = $event->user->username ?? 'Unknown';
-                // Pass the user ID manually and append the username into the details array
+                
+                // Pass parameters strictly by position to avoid named argument conflicts:
+                // 1. Activity String
+                // 2. Model (?Model = null)
+                // 3. Details Array
+                // 4. Forced User ID
                 app(AuditLogService::class)->logActivity(
-                    activity: 'admin.logged_out',
-                    details: ['user_id' => $event->user->id]
+                    'admin.logged_out',
+                    null,
+                    ['username' => $username],
+                    $event->user->id
                 );
             }
         });

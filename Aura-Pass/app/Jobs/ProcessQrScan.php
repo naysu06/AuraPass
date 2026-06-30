@@ -44,7 +44,7 @@ class ProcessQrScan implements ShouldQueue
 
         // 1. MEMBER NOT FOUND
         if (!$member) {
-            event(new MemberScanFailed(null, 'not_found'));
+            event(new MemberScanFailed(null, 'not_found', $this->qrData));
 
             Notification::make()
                 ->title('Scan Failed')

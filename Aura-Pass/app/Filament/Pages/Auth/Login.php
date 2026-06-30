@@ -9,6 +9,7 @@ use Filament\Forms\Components\Component;
 use Illuminate\Validation\ValidationException;
 use App\Services\AuditLogService;
 use Filament\Http\Responses\Auth\Contracts\LoginResponse;
+use Illuminate\Support\Facades\Request as FacadesRequest;
 
 class Login extends BaseLogin
 {
@@ -42,31 +43,26 @@ class Login extends BaseLogin
     }
 
     /**
-     * Override the authenticate method to inject the Audit Log tracker with username.
+     * Override the authenticate method to inject the Audit Log tracker safely.
      */
     public function authenticate(): ?LoginResponse
     {
-        // 1. Capture the username used in the form before parent::authenticate() clears it
-        $username = $this->form->getState()['username'] ?? 'Unknown';
-
-        // 2. Let Filament handle validation and credential checking natively
+        // 1. Let Filament log the user in completely
         $response = parent::authenticate();
 
-        // 3. If no exception was thrown, log it along with the username in the details column
-        app(AuditLogService::class)->logActivity(
-            activity: 'admin.logged_in',
-            model: null,
-            details: ['username' => $username]
+        // 2. Safely grab the username directly from Filament's Livewire state array
+        $username = $this->data['username'] ?? 'Unknown';
+
+        // 3. Log the activity cleanly
+        app(\App\Services\AuditLogService::class)->logActivity(
+            'admin.logged_in',
+            null,
+            ['username' => $username]
         );
 
-        // 4. Complete the login response pipeline
         return $response;
     }
 
-    /**
-     * FIX: Override the failure exception to target the 'username' field 
-     * instead of the default 'email' field.
-     */
     protected function throwFailureValidationException(): never
     {
         throw ValidationException::withMessages([

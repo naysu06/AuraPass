@@ -9,6 +9,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder; // 1. NEW: Import the Eloquent Builder
 
 class AccessLogResource extends Resource
 {
@@ -18,11 +19,20 @@ class AccessLogResource extends Resource
     protected static ?string $navigationLabel = 'Access Logs';
     protected static ?int $navigationSort = 3;
 
+    // 2. NEW: Override the base query to filter out soft-deleted members
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            // This forces the table to ONLY show check-ins if the 
+            // associated Member exists and is NOT soft-deleted.
+            ->whereHas('member'); 
+    }
+
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
-                // 1. NEW: Member Photo
+                // 1. Member Photo
                 Tables\Columns\ImageColumn::make('member.profile_photo')
                     ->label('Photo')
                     ->circular()

@@ -13,6 +13,8 @@ return new class extends Migration {
             $table->string('email')->nullable();
             $table->string('unique_id')->unique(); // This will be in the QR code
             $table->date('membership_expiry_date');
+            // ADD THIS LINE for Soft Deletes
+            $table->softDeletes();
             $table->timestamps();
         });
     }

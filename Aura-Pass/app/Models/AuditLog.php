@@ -27,6 +27,6 @@ class AuditLog extends Model
 
     public function loggable()
     {
-        return $this->morphTo();
+        return $this->morphTo()->withTrashed();
     }
 }

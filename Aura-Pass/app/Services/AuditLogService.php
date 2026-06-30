@@ -10,14 +10,18 @@ use Illuminate\Support\Facades\App;
 
 class AuditLogService
 {
-    public function logActivity(string $activity, ?Model $model = null, array $details = [])
+    public function logActivity(string $activity, ?Model $model = null, array $details = [], $forceUserId = null)
     {
-        // Detect if running via Windows Command Line / Task Scheduler
         $isConsole = App::runningInConsole();
 
+        // SAFETY NET: If $model is somehow an array or collection due to a calling mixup,
+        // merge it into details and set the model back to null to prevent database corruption.
+        if ($model !== null && !($model instanceof Model)) {
+            $details = array_merge($details, is_array($model) ? $model : ['raw_data' => (string)$model]);
+            $model = null;
+        }
+
         $logData = [
-            // Will naturally be null on system boot
-            // Use forced ID if provided, otherwise fallback to Auth::id()
             'user_id'    => $forceUserId ?? Auth::id(),
             'activity'   => $activity,
             'details'    => $details,
@@ -25,7 +29,7 @@ class AuditLogService
             'user_agent' => $isConsole ? 'Windows CLI (System Event)' : Request::header('user-agent'),
         ];
 
-        if ($model) {
+        if ($model instanceof Model) {
             $logData['loggable_id'] = $model->id;
             $logData['loggable_type'] = get_class($model);
         }

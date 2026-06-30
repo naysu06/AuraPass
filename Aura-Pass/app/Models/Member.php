@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes; // 1. IMPORT THE TRAIT
 
 class Member extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes; // 2. USE THE TRAIT HERE
 
     protected $fillable = [
         'name',
@@ -19,7 +20,7 @@ class Member extends Model
         'profile_photo',
         'membership_type',
     ];
-    // This casts the 'membership_expiry_date' attribute to a Carbon instance, allowing for easy date manipulation.
+
     protected $casts = [
         'membership_expiry_date' => 'datetime',
     ];
@@ -27,7 +28,6 @@ class Member extends Model
     /**
      * The "booted" method of the model.
      */
-    // Automatically generate a UID when creating a new member
     protected static function booted(): void
     {
         static::creating(function (Member $member) {
@@ -38,7 +38,6 @@ class Member extends Model
     /**
      * Get the check-ins for the member.
      */
-    // Defines a one-to-many relationship between Member and CheckIn models.
     public function checkIns(): HasMany
     {
         return $this->hasMany(CheckIn::class);
@@ -46,11 +45,7 @@ class Member extends Model
 
     /**
      * Members whose membership is currently active.
-     *
-     * Usage:
-     * Member::active()->count();
      */
-    // This scope is used to filter members whose membership has not expired.
     public function scopeActive($query)
     {
         return $query->where('membership_expiry_date', '>=', now());
@@ -58,11 +53,7 @@ class Member extends Model
 
     /**
      * Members expiring within a given number of days.
-     *
-     * Usage:
-     * Member::expiringWithin(7)->get();
      */
-    // This scope is used to find members whose membership will expire within a certain number of days.
     public function scopeExpiringWithin($query, int $days)
     {
         return $query->whereBetween('membership_expiry_date', [now(), now()->addDays($days)]);
@@ -70,7 +61,6 @@ class Member extends Model
 
     /**
      * Calculates the individual churn risk score for this specific member.
-     * Returns a float between 0.0 (Safe) and 1.0 (High Risk).
      */
     public function getChurnRiskScoreAttribute(): float
     {

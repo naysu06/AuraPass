@@ -13,13 +13,15 @@ class MemberScanFailed implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $member; // Can be null if not found
-    public string $reason; // 'expired', 'not_found', or 'ignored'
+    public ?Member $member; 
+    public string $reason; 
+    public ?string $scannedCode; // NEW: Added to capture unmapped QR inputs
 
-    public function __construct(?Member $member, string $reason)
+    public function __construct(?Member $member, string $reason, ?string $scannedCode = null)
     {
         $this->member = $member;
         $this->reason = $reason;
+        $this->scannedCode = $scannedCode; // Assign the raw input string
     }
 
     public function broadcastOn(): array

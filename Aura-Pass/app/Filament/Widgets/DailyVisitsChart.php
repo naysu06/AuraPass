@@ -5,76 +5,145 @@ namespace App\Filament\Widgets;
 use App\Models\CheckIn;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\HtmlString; // For coloring the description
+use Illuminate\Support\HtmlString;
+use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 
-class DailyVisitsChart extends ChartWidget
+// Required Traits for Forms & Actions
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+
+class DailyVisitsChart extends ChartWidget implements HasActions, HasForms
 {
-    protected static ?string $heading = 'Daily Visits Comparison';
+    use InteractsWithActions;
+    use InteractsWithForms;
 
+    protected static ?string $heading = 'Visits Comparison';
+
+    public ?string $customStartDate = null;
+    public ?string $customEndDate = null;
+
+    // 1. OVERRIDE RENDER: Use our new custom wrapper view
+    public function render(): \Illuminate\Contracts\View\View
+    {
+        return view('filament.widgets.chart-with-modals', [
+            'chart' => parent::render(),
+        ]);
+    }
+
+    // 2. THE DROPDOWN OPTIONS
     protected function getFilters(): ?array
     {
         return [
-            '7' => 'Last 7 Days',
-            '14' => 'Last 14 Days',
-            '30' => 'Last 30 Days',
+            '7' => 'Weekly',
+            '30' => 'Monthly',
+            'custom' => 'Custom Range',
         ];
     }
 
-    // 1. DYNAMIC DESCRIPTION: Calculates the % Change
-    // FIX: Changed '?string|HtmlString' to 'string|HtmlString|null'
-    public function getDescription(): string|HtmlString|null
+    // 3. THE TRIGGER: Catch the dropdown change and open the modal
+    public function updatedFilter($value): void
+    {
+        if ($value === 'custom') {
+            $this->mountAction('customRange'); // Triggers the action below
+        } else {
+            // Reset dates if they click back to Weekly/Monthly
+            $this->customStartDate = null;
+            $this->customEndDate = null;
+        }
+    }
+
+    // 4. THE ACTION (MODAL): Defined natively for Livewire
+    public function customRangeAction(): Action
+    {
+        return Action::make('customRange')
+            ->modalHeading('Select Custom Date Range')
+            ->modalWidth('md')
+            ->form([
+                DatePicker::make('start_date')
+                    ->label('Start Date')
+                    ->required()
+                    ->default(now()->subDays(6)),
+                DatePicker::make('end_date')
+                    ->label('End Date')
+                    ->required()
+                    ->default(now()),
+            ])
+            ->action(function (array $data): void {
+                // Save the dates to update the chart
+                $this->customStartDate = $data['start_date'];
+                $this->customEndDate = $data['end_date'];
+            });
+    }
+
+    // --- EVERYTHING BELOW HERE IS YOUR EXACT EXISTING LOGIC ---
+
+    protected function getDateRange(): array
     {
         $activeFilter = $this->filter ?? '7';
-        $days = (int) $activeFilter;
 
-        // Calculate Totals directly (Faster than looping)
-        $currentCount = CheckIn::where('created_at', '>=', now()->subDays($days))->count();
-        
-        $previousCount = CheckIn::where('created_at', '>=', now()->subDays($days * 2))
-            ->where('created_at', '<', now()->subDays($days))
-            ->count();
+        if ($activeFilter === 'custom' && $this->customStartDate && $this->customEndDate) {
+            $start = Carbon::parse($this->customStartDate)->startOfDay();
+            $end = Carbon::parse($this->customEndDate)->endOfDay();
+            $days = (int) $start->diffInDays($end) + 1;
+            $periodLabel = "{$days} days";
+        } else {
+            $days = (int) ($activeFilter === 'custom' ? 7 : $activeFilter);
+            $start = now()->subDays($days - 1)->startOfDay();
+            $end = now()->endOfDay();
+            $periodLabel = $days === 7 ? 'week' : 'month';
+        }
 
-        // Avoid division by zero
+        $previousStart = $start->copy()->subDays($days);
+        $previousEnd = $start->copy()->subSeconds(1);
+
+        return [$start, $end, $previousStart, $previousEnd, $days, $periodLabel];
+    }
+
+    public function getDescription(): string|HtmlString|null
+    {
+        [$start, $end, $previousStart, $previousEnd, $days, $periodLabel] = $this->getDateRange();
+
+        $currentCount = CheckIn::whereBetween('created_at', [$start, $end])->count();
+        $previousCount = CheckIn::whereBetween('created_at', [$previousStart, $previousEnd])->count();
+
         $growth = 0;
         if ($previousCount > 0) {
             $growth = (($currentCount - $previousCount) / $previousCount) * 100;
         } elseif ($currentCount > 0) {
-            $growth = 100; // 100% growth if previous was 0
+            $growth = 100; 
         }
 
-        // Format: +12.5% or -5.0%
         $formattedGrowth = number_format(abs($growth), 1) . '%';
-        $direction = $growth >= 0 ? 'increase' : 'decrease';
-        $icon = $growth >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down';
-        $color = $growth >= 0 ? 'text-success-500' : 'text-danger-500'; // Filament standard colors
+        $color = $growth >= 0 ? 'text-success-500' : 'text-danger-500'; 
         $word = $growth >= 0 ? 'Increase' : 'Decrease';
 
-        // Return styled HTML
         return new HtmlString("
             <div class='flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400'>
                 <span>Total: <span class='font-bold'>{$currentCount}</span> check-ins</span>
                 <span class='{$color} font-bold flex items-center'>
                     ({$formattedGrowth} {$word})
                 </span>
-                <span class='text-xs text-gray-400'>vs previous {$days} days</span>
+                <span class='text-xs text-gray-400'>vs previous {$periodLabel}</span>
             </div>
         ");
     }
 
     protected function getData(): array
     {
-        $activeFilter = $this->filter ?? '7';
-        $days = (int) $activeFilter;
+        [$start, $end, $previousStart, $previousEnd, $days, $periodLabel] = $this->getDateRange();
+        
+        $legendLabel = $periodLabel === 'week' ? 'Week' : ($periodLabel === 'month' ? 'Month' : $periodLabel);
 
-        // --- FETCH DATA ---
         $currentData = CheckIn::select('created_at')
-            ->where('created_at', '>=', now()->subDays($days))
+            ->whereBetween('created_at', [$start, $end])
             ->get()
             ->groupBy(fn ($date) => Carbon::parse($date->created_at)->setTimezone('Asia/Manila')->format('Y-m-d'));
 
         $previousData = CheckIn::select('created_at')
-            ->where('created_at', '>=', now()->subDays($days * 2)) 
-            ->where('created_at', '<', now()->subDays($days))
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->get()
             ->groupBy(fn ($date) => Carbon::parse($date->created_at)->setTimezone('Asia/Manila')->format('Y-m-d'));
 
@@ -82,10 +151,9 @@ class DailyVisitsChart extends ChartWidget
         $previousCounts = [];
         $labels = [];
 
-        // Loop backwards (e.g., 6 days ago -> Today)
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $dateCurrent = now()->subDays($i);
-            $datePrevious = now()->subDays($i + $days);
+        for ($i = 0; $i < $days; $i++) {
+            $dateCurrent = $start->copy()->addDays($i);
+            $datePrevious = $previousStart->copy()->addDays($i);
 
             $cKey = $dateCurrent->format('Y-m-d');
             $pKey = $datePrevious->format('Y-m-d');
@@ -93,23 +161,22 @@ class DailyVisitsChart extends ChartWidget
             $currentCounts[] = isset($currentData[$cKey]) ? $currentData[$cKey]->count() : 0;
             $previousCounts[] = isset($previousData[$pKey]) ? $previousData[$pKey]->count() : 0;
 
-            $labels[] = $dateCurrent->format('D M d'); 
+            $labels[] = $dateCurrent->format('M d'); 
         }
 
         return [
             'datasets' => [
                 [
-                    'label' => 'Current Period',
+                    'label' => 'Selected Period',
                     'data' => $currentCounts,
-                    'backgroundColor' => '#3B82F6', // Blue
+                    'backgroundColor' => '#3B82F6', 
                     'borderColor' => '#3B82F6',
                     'barPercentage' => 0.7,
                 ],
                 [
-                    // Rename label to indicate it's an offset comparison
-                    'label' => "Prior {$days} Days", 
+                    'label' => "Prior {$legendLabel}", 
                     'data' => $previousCounts,
-                    'backgroundColor' => '#9CA3AF', // Gray
+                    'backgroundColor' => '#9CA3AF', 
                     'borderColor' => '#9CA3AF',
                     'barPercentage' => 0.7,
                 ],
@@ -128,7 +195,7 @@ class DailyVisitsChart extends ChartWidget
         return [
             'interaction' => [
                 'intersect' => false,
-                'mode' => 'index', // <--- FIX: Shows BOTH bars in one tooltip
+                'mode' => 'index', 
             ],
             'scales' => [
                 'y' => [
@@ -143,7 +210,7 @@ class DailyVisitsChart extends ChartWidget
             'plugins' => [
                 'legend' => [
                     'display' => true,
-                    'position' => 'bottom', // Move legend to bottom for cleaner look
+                    'position' => 'bottom', 
                 ],
             ],
         ];

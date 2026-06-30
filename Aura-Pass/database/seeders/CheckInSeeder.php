@@ -5,11 +5,12 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\CheckIn;
 use App\Models\Member;
+use App\Models\AuditLog;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Baguio City Gym — Realistic Behavioral CheckIn Seeder
+ * Baguio City Gym — Realistic Behavioral CheckIn & Audit Seeder
  *
  * Personas & retention modeled after real Baguio demographics:
  * - Students (SLU, UB, BSU, BCU) — semester-driven, holiday exodus
@@ -17,14 +18,6 @@ use Illuminate\Support\Facades\Schema;
  * - Resolutioners              — Jan spike, rapid decay
  * - Seniors / Retirees         — morning loyalists, steady long-term
  * - Athletes / Gym Rats        — hardcore, near-daily, multi-year
- *
- * Seasonal calendar baked in:
- * - Jan–Feb  : Resolutioner surge (Panagbenga tourists removed, locals only)
- * - Mar–May  : Kadayawan / Holy Week lull, summer for non-students
- * - Jun–Jul  : Rainy season + inter-school break → sharp drop
- * - Aug–Sep  : 1st semester starts → student flood
- * - Oct–Nov  : Mid-semester slump, stable workers
- * - Dec      : Christmas break → near-ghost town
  */
 class CheckInSeeder extends Seeder
 {
@@ -48,6 +41,7 @@ class CheckInSeeder extends Seeder
         Schema::disableForeignKeyConstraints();
         CheckIn::truncate();
         Member::truncate();
+        AuditLog::truncate(); // <-- ADDED: Wipe the audit logs clean
         Schema::enableForeignKeyConstraints();
 
         $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts (Limited to ~150)...');
@@ -58,7 +52,7 @@ class CheckInSeeder extends Seeder
 
         $totalInserted = $this->simulateCheckIns($members);
 
-        $this->command->info("✅  [3/3] Seeded {$totalInserted} behaviorally-accurate check-ins. Analytics ready!");
+        $this->command->info("✅  [3/3] Seeded {$totalInserted} behaviorally-accurate check-ins and audit logs. Analytics ready!");
     }
 
     // =========================================================================
@@ -68,6 +62,7 @@ class CheckInSeeder extends Seeder
     private function generateMembers(): \Illuminate\Support\Collection
     {
         $members = collect();
+        $auditBuffer = []; // Buffer for member creation logs
 
         for ($m = self::SEED_MONTHS; $m >= 0; $m--) {
             $targetMonth = now()->subMonthsNoOverflow($m);
@@ -75,10 +70,13 @@ class CheckInSeeder extends Seeder
 
             $cohort = $this->buildMonthlyCohort($monthNum, $targetMonth);
             foreach ($cohort as $memberData) {
-                // Hard cap to ensure we don't blow past ~145 members + 5 fixtures
                 if ($members->count() >= 145) break;
                 
-                $members->push(Member::factory()->create($memberData));
+                $newMember = Member::factory()->create($memberData);
+                $members->push($newMember);
+
+                // Add audit log for member creation
+                $auditBuffer[] = $this->buildAuditLogRow('member.created', $newMember, $newMember->created_at);
             }
         }
 
@@ -92,43 +90,33 @@ class CheckInSeeder extends Seeder
         ];
         
         foreach ($fixtures as $f) {
-            $members->push(Member::factory()->create([
-                'name'                    => $f['name'],
-                'created_at'              => Carbon::now()->subMonths(rand(2, 5)),
-                'membership_expiry_date'  => Carbon::now()->addDays($f['days']),
-                'membership_type'         => $f['type'],
-            ]));
+            $joinDate = Carbon::now()->subMonths(rand(2, 5));
+            $newMember = Member::factory()->create([
+                'name'                   => $f['name'],
+                'created_at'             => $joinDate,
+                'membership_expiry_date' => Carbon::now()->addDays($f['days']),
+                'membership_type'        => $f['type'],
+            ]);
+            $members->push($newMember);
+            
+            $auditBuffer[] = $this->buildAuditLogRow('member.created', $newMember, $joinDate);
         }
+
+        // Insert all member creation logs at once
+        AuditLog::insert($auditBuffer);
 
         return $members;
     }
 
-    /**
-     * Returns an array of member attribute arrays for a given month.
-     * Volume scaled down significantly to maintain ~150 total members.
-     */
     private function buildMonthlyCohort(int $month, Carbon $targetMonth): array
     {
         $cohort = [];
-
-        // Scaled down volumes to hit exactly ~145 generated members over 18 months
         $volumeMap = [
-            1  => 16,  // Jan  — Resolutioners
-            2  => 12,  // Feb  — Locals inspired (tourists removed)
-            3  => 6,   // Mar  — Holy Week lull starts
-            4  => 4,   // Apr  — Summer break
-            5  => 4,   // May  — Pre-enrolment calm
-            6  => 3,   // Jun  — Rainy season
-            7  => 3,   // Jul  — Deep rainy season
-            8  => 14,  // Aug  — 1st Sem starts, student flood
-            9  => 11,  // Sep  — Semester momentum
-            10 => 6,   // Oct  — Mid-sem, stable
-            11 => 5,   // Nov  — Pre-finals
-            12 => 3,   // Dec  — Christmas break exodus
+            1  => 16, 2  => 12, 3  => 6,  4  => 4,  5  => 4,  6  => 3,
+            7  => 3,  8  => 14, 9  => 11, 10 => 6,  11 => 5,  12 => 3,
         ];
 
         $volume = $volumeMap[$month] ?? 5;
-        // Add some month-to-month noise (±20%)
         $volume = (int) round($volume * (0.80 + lcg_value() * 0.40));
 
         for ($i = 0; $i < $volume; $i++) {
@@ -149,36 +137,29 @@ class CheckInSeeder extends Seeder
     }
 
     // =========================================================================
-    // CHECK-IN SIMULATION
+    // CHECK-IN & AUDIT SIMULATION
     // =========================================================================
 
     private function simulateCheckIns(\Illuminate\Support\Collection $allMembers): int
     {
-        $buffer        = [];
+        $checkInBuffer = [];
+        $auditBuffer   = [];
         $totalInserted = 0;
 
         for ($d = self::CHECKIN_DAYS; $d >= 0; $d--) {
             $date      = Carbon::now()->subDays($d)->startOfDay();
-            $dayOfWeek = (int) $date->dayOfWeek; // 0=Sun … 6=Sat
+            $dayOfWeek = (int) $date->dayOfWeek;
             $monthNum  = (int) $date->month;
 
-            // Members active on this date (still within expiry, already joined)
             $activeMembers = $allMembers->filter(
                 fn($m) => $m->created_at->lte($date) && $m->membership_expiry_date->gte($date)
             );
 
             foreach ($activeMembers as $member) {
                 $daysSinceJoined = (int) $date->diffInDays($member->created_at);
-                $prob = $this->calcAttendanceProbability(
-                    $member->membership_type,
-                    $daysSinceJoined,
-                    $dayOfWeek,
-                    $monthNum
-                );
+                $prob = $this->calcAttendanceProbability($member->membership_type, $daysSinceJoined, $dayOfWeek, $monthNum);
 
-                if ((rand(1, 1000) / 1000) > $prob) {
-                    continue; // Member skipped the gym today
-                }
+                if ((rand(1, 1000) / 1000) > $prob) continue; 
 
                 // ── Primary check-in ────────────────────────────────────────
                 $hour        = $this->getWeightedHour($monthNum, $dayOfWeek);
@@ -190,143 +171,55 @@ class CheckInSeeder extends Seeder
                 $checkOutTime = $checkInTime->copy()->addMinutes(rand($minDur, $maxDur));
                 if ($checkOutTime->isFuture()) $checkOutTime = null;
 
-                $buffer[] = $this->buildCheckInRow($member->id, $checkInTime, $checkOutTime);
+                $checkInBuffer[] = $this->buildCheckInRow($member->id, $checkInTime, $checkOutTime);
+                $auditBuffer[]   = $this->buildAuditLogRow('member.checked_in', $member, $checkInTime);
+                
+                if ($checkOutTime) {
+                    $auditBuffer[] = $this->buildAuditLogRow('member.checked_out', $member, $checkOutTime);
+                }
+                
                 $totalInserted++;
 
-                // ── Rare double-session (gym rats ~5%, serious regulars ~2%) ─
+                // ── Rare double-session ─────────────────────────────────────
                 if ($member->membership_type === 'regular' && rand(1, 100) <= 3) {
                     $secondHour = ($hour < 12) ? rand(16, 18) : rand(6, 8);
                     $secondIn   = $date->copy()->setTime($secondHour, rand(0, 59), rand(0, 59));
+                    
                     if (!$secondIn->isFuture() && $secondIn->gt($checkOutTime ?? $checkInTime)) {
                         $secondOut = $secondIn->copy()->addMinutes(rand(30, 60));
                         if ($secondOut->isFuture()) $secondOut = null;
-                        $buffer[] = $this->buildCheckInRow($member->id, $secondIn, $secondOut);
+                        
+                        $checkInBuffer[] = $this->buildCheckInRow($member->id, $secondIn, $secondOut);
+                        $auditBuffer[]   = $this->buildAuditLogRow('member.checked_in', $member, $secondIn);
+                        
+                        if ($secondOut) {
+                            $auditBuffer[] = $this->buildAuditLogRow('member.checked_out', $member, $secondOut);
+                        }
                         $totalInserted++;
                     }
                 }
 
-                if (count($buffer) >= self::BATCH_SIZE) {
-                    CheckIn::insert($buffer);
-                    $buffer = [];
+                // Batch insert to protect memory
+                if (count($checkInBuffer) >= self::BATCH_SIZE) {
+                    CheckIn::insert($checkInBuffer);
+                    AuditLog::insert($auditBuffer); // Insert audits alongside check-ins
+                    $checkInBuffer = [];
+                    $auditBuffer   = [];
                 }
             }
         }
 
-        if (!empty($buffer)) {
-            CheckIn::insert($buffer);
+        if (!empty($checkInBuffer)) {
+            CheckIn::insert($checkInBuffer);
+            AuditLog::insert($auditBuffer);
         }
 
         return $totalInserted;
     }
 
-    /**
-     * Core probability engine.
-     * Returns a float 0.0–0.95 representing likelihood of gym visit today.
-     */
-    private function calcAttendanceProbability(
-        string $membershipType,
-        int    $daysSinceJoined,
-        int    $dayOfWeek,
-        int    $month
-    ): float {
-        $prob = match ($membershipType) {
-            // PROMO = Resolutioner. Very high start, exponential decay.
-            'promo' => max(0.0, 0.65 * pow(0.93, $daysSinceJoined)),
-
-            // DISCOUNT = Students/Seniors. Semester-sensitive steady state.
-            'discount' => $this->studentProbability($daysSinceJoined, $month),
-
-            // REGULAR = BPO workers, locals, gym rats. Stable with slow decay.
-            default => max(0.15, 0.42 * pow(0.998, $daysSinceJoined)),
-        };
-
-        // ── Day-of-week adjustments ──────────────────────────────────────────
-        $prob += match ($dayOfWeek) {
-            1 => 0.12,             // Monday — "chest day", high intent
-            2 => 0.05,             // Tuesday — still motivated
-            3 => 0.02,             // Wednesday — midweek neutral
-            4 => -0.03,            // Thursday — slight fatigue
-            5 => -0.10,            // Friday — social plans, Baguio nightlife
-            6 => -0.18,            // Saturday — sleep in, family
-            0 => -0.20,            // Sunday — rest day culture
-            default => 0.0,
-        };
-
-        // ── Seasonal / holiday overrides ────────────────────────────────────
-        // Christmas–New Year slump
-        if ($month === 12) $prob -= 0.18;
-        // Deep rainy season (Baguio gets very heavy rains)
-        if (in_array($month, [7, 8])) $prob -= 0.08;
-        // Post-New Year peak (first 2 weeks of January, high discipline)
-        if ($month === 1 && $daysSinceJoined <= 14) $prob += 0.10;
-        // Panagbenga month — tourists don't join, but local motivation still carries
-        if ($month === 2) $prob += 0.05;
-
-        return (float) max(0.02, min($prob, 0.95));
-    }
-
-    private function studentProbability(int $daysSinceJoined, int $month): float
-    {
-        // Students follow semester rhythm
-        $base = 0.38;
-
-        // Semester break / holiday → near-absent
-        if (in_array($month, [12, 6, 7])) return 0.05;
-
-        // Finals weeks (Nov, Apr) — skip gym for studying
-        if (in_array($month, [11, 4])) $base = 0.20;
-
-        // Fresh semester burst
-        if (in_array($month, [8, 1]) && $daysSinceJoined <= 21) $base = 0.55;
-
-        // Gradual enthusiasm decay through semester
-        $base *= pow(0.995, $daysSinceJoined);
-
-        return max(0.04, $base);
-    }
-
-    /**
-     * Hour distribution shifts based on month (cold = early morning preference in Baguio).
-     */
-    private function getWeightedHour(int $month, int $dayOfWeek): int
-    {
-        $weights = self::HOUR_WEIGHTS;
-
-        // Weekends: morning shift, softer evening
-        if ($dayOfWeek === 0 || $dayOfWeek === 6) {
-            $weights[7] = (int) ($weights[7] * 1.3);
-            $weights[17] = (int) ($weights[17] * 0.7);
-        }
-
-        // Baguio's summer months (Mar–May): later mornings, people sleep in
-        if (in_array($month, [3, 4, 5])) {
-            $weights[6] = (int) ($weights[6] * 0.6);
-            $weights[8] = (int) ($weights[8] * 1.3);
-        }
-
-        $total = array_sum($weights);
-        $rand  = rand(1, $total);
-        foreach ($weights as $hour => $weight) {
-            $rand -= $weight;
-            if ($rand <= 0) return $hour;
-        }
-        return 17;
-    }
-
-    /**
-     * Returns [minMinutes, maxMinutes] for a workout session.
-     */
-    private function getSessionDuration(string $type, int $hour): array
-    {
-        // Early-morning sessions tend to be shorter (beat the rush / commute)
-        if ($hour <= 7) return [35, 65];
-
-        return match ($type) {
-            'promo'   => [25, 55],   // Resolutioners do shorter, less focused workouts
-            'discount' => [45, 80],  // Students hang out a bit
-            default   => [50, 110],  // Regular members full workout
-        };
-    }
+    // =========================================================================
+    // BUILDER HELPERS
+    // =========================================================================
 
     private function buildCheckInRow(int $memberId, Carbon $in, ?Carbon $out): array
     {
@@ -338,32 +231,98 @@ class CheckInSeeder extends Seeder
         ];
     }
 
-    // =========================================================================
-    // PERSONA HELPERS
-    // =========================================================================
-
     /**
-     * Persona probability mix varies month by month.
-     *
-     * Personas:
-     * student      — SLU/UB/BSU/BCU, bulk of membership
-     * worker       — BPO, government, retail staff
-     * resolutioner — Jan–Feb burst, no sticking power
-     * senior       — retirees, consistent morning crowd
-     * athlete      — competitive lifters / runners, high frequency
+     * Helper to structure the audit log cleanly for mass insertion.
+     * Uses json_encode because Eloquent doesn't cast arrays during mass insert().
      */
-    private function pickPersona(int $month): string
+    private function buildAuditLogRow(string $activity, Member $member, Carbon $timestamp): array
     {
-        // [student, worker, resolutioner, senior, athlete] cumulative %
-        $distribution = match (true) {
-            in_array($month, [1, 2])    => [43, 30, 20, 5,  2],  // Jan–Feb (High resolutioners)
-            in_array($month, [3, 4, 5]) => [25, 42, 5,  20, 8],  // Summer (Students drop, workers hold)
-            in_array($month, [6, 7])    => [20, 45, 3,  22, 10], // Rainy season
-            in_array($month, [8, 9])    => [60, 20, 2,  12, 6],  // Sem starts (Huge student influx)
-            in_array($month, [10, 11])  => [45, 30, 2,  15, 8],  // Mid-sem
-            default                     => [20, 42, 5,  25, 8],  // Dec
+        return [
+            'user_id'       => null, // Null indicates a "System" event on your UI
+            'activity'      => $activity,
+            'loggable_id'   => $member->id,
+            'loggable_type' => get_class($member), // Usually 'App\Models\Member'
+            'details'       => json_encode(['member_name' => $member->name]),
+            'ip_address'    => '127.0.0.1',
+            'user_agent'    => 'AuraPass Background Seeder',
+            'created_at'    => $timestamp->copy(),
+            'updated_at'    => $timestamp->copy(),
+        ];
+    }
+
+    // ... [The rest of your calcAttendanceProbability, studentProbability, getWeightedHour, etc. methods remain exactly the same]
+
+    private function calcAttendanceProbability(string $membershipType, int $daysSinceJoined, int $dayOfWeek, int $month): float
+    {
+        $prob = match ($membershipType) {
+            'promo' => max(0.0, 0.65 * pow(0.93, $daysSinceJoined)),
+            'discount' => $this->studentProbability($daysSinceJoined, $month),
+            default => max(0.15, 0.42 * pow(0.998, $daysSinceJoined)),
         };
 
+        $prob += match ($dayOfWeek) {
+            1 => 0.12, 2 => 0.05, 3 => 0.02, 4 => -0.03,
+            5 => -0.10, 6 => -0.18, 0 => -0.20, default => 0.0,
+        };
+
+        if ($month === 12) $prob -= 0.18;
+        if (in_array($month, [7, 8])) $prob -= 0.08;
+        if ($month === 1 && $daysSinceJoined <= 14) $prob += 0.10;
+        if ($month === 2) $prob += 0.05;
+
+        return (float) max(0.02, min($prob, 0.95));
+    }
+
+    private function studentProbability(int $daysSinceJoined, int $month): float
+    {
+        $base = 0.38;
+        if (in_array($month, [12, 6, 7])) return 0.05;
+        if (in_array($month, [11, 4])) $base = 0.20;
+        if (in_array($month, [8, 1]) && $daysSinceJoined <= 21) $base = 0.55;
+        $base *= pow(0.995, $daysSinceJoined);
+        return max(0.04, $base);
+    }
+
+    private function getWeightedHour(int $month, int $dayOfWeek): int
+    {
+        $weights = self::HOUR_WEIGHTS;
+        if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+            $weights[7] = (int) ($weights[7] * 1.3);
+            $weights[17] = (int) ($weights[17] * 0.7);
+        }
+        if (in_array($month, [3, 4, 5])) {
+            $weights[6] = (int) ($weights[6] * 0.6);
+            $weights[8] = (int) ($weights[8] * 1.3);
+        }
+        $total = array_sum($weights);
+        $rand  = rand(1, $total);
+        foreach ($weights as $hour => $weight) {
+            $rand -= $weight;
+            if ($rand <= 0) return $hour;
+        }
+        return 17;
+    }
+
+    private function getSessionDuration(string $type, int $hour): array
+    {
+        if ($hour <= 7) return [35, 65];
+        return match ($type) {
+            'promo'   => [25, 55],
+            'discount' => [45, 80],
+            default   => [50, 110],
+        };
+    }
+
+    private function pickPersona(int $month): string
+    {
+        $distribution = match (true) {
+            in_array($month, [1, 2])    => [43, 30, 20, 5,  2],
+            in_array($month, [3, 4, 5]) => [25, 42, 5,  20, 8],
+            in_array($month, [6, 7])    => [20, 45, 3,  22, 10],
+            in_array($month, [8, 9])    => [60, 20, 2,  12, 6],
+            in_array($month, [10, 11])  => [45, 30, 2,  15, 8],
+            default                     => [20, 42, 5,  25, 8],
+        };
         $personas = ['student', 'worker', 'resolutioner', 'senior', 'athlete'];
         $rand = rand(1, 100);
         $cumulative = 0;
@@ -374,15 +333,14 @@ class CheckInSeeder extends Seeder
         return 'worker';
     }
 
-    /** Membership duration in months by persona (reflects real churn data). */
     private function getPersonaDuration(string $persona): int
     {
         return match ($persona) {
-            'student'      => rand(3, 5),    // One semester
-            'worker'       => rand(5, 14),   // Steady ~1 year
-            'resolutioner' => rand(1, 2),    // Burns out fast
-            'senior'       => rand(8, 24),   // Long-term loyalists
-            'athlete'      => rand(10, 24),  // Highly committed
+            'student'      => rand(3, 5),
+            'worker'       => rand(5, 14),
+            'resolutioner' => rand(1, 2),
+            'senior'       => rand(8, 24),
+            'athlete'      => rand(10, 24),
             default        => rand(2, 4),
         };
     }
