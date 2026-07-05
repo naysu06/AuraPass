@@ -66,14 +66,19 @@ class UserObserver
      */
     public function deleted(User $user): void
     {
+        // 1. Explicitly grab the active admin performing the action
+        $activeAdmin = auth()->user();
+
         // We pass 'null' for the model here because the row is gone.
         // Passing the model could cause UI crashes when it tries to find a deleted relation.
         app(AuditLogService::class)->logActivity(
             'admin.deleted',
             null, 
             [
-                'username' => $user->username,
-                'role'     => $user->role,
+                'username'      => $user->username,
+                'role'          => $user->role,
+                // 2. Force the operator's name into the JSON payload as a failsafe
+                'operator_name' => $activeAdmin ? $activeAdmin->username : 'System', 
             ]
         );
     }

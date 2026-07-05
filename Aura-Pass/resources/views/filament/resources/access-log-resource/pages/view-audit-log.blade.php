@@ -44,12 +44,12 @@
                     <div x-show="open" x-collapse x-cloak class="mt-4 space-y-4">
                         @foreach($logsOnDate as $log)
                             <div class="flex items-center space-x-4">
-                                <div class="text-gray-500 dark:text-gray-400 w-28 shrink-0 text-sm font-medium">
+                                <div class="text-gray-500 dark:text-gray-400 w-28 shrink-0 text-sm font-medium pr-4">
                                     {{ $log->created_at->format('h:i:s A') }}
                                 </div>
                                 
                                 <div class="flex-1">
-                                    <div class="flex flex-wrap items-center gap-2 text-sm">
+                                    <div class="flex flex-wrap items-center gap-2 text-sm pr-10">
                                         
                                         @switch($log->activity)
                                             @case('member.checked_in')
@@ -118,19 +118,44 @@
                                                 @break
 
                                             @case('member.updated')
-                                                <x-heroicon-m-pencil-square class="w-5 h-5 text-blue-400" />
-                                                <span class="text-gray-500 dark:text-gray-400">Member Profile Updated:</span>
-                                                <a href="{{ \App\Filament\Resources\MemberResource::getUrl('view', ['record' => $log->loggable_id ?? 1]) }}" class="text-primary-600 dark:text-primary-500 hover:underline font-semibold">
-                                                    {{ $log->details['member_name'] ?? $log->loggable?->name ?? 'Unknown' }}
-                                                </a>
-                                                @if(isset($log->details['changes']))
-                                                    <div class="flex gap-2 ml-2">
-                                                        @foreach($log->details['changes'] as $key => $changeData)
-                                                            <span class="text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-2 py-0.5 rounded font-medium border border-red-200 dark:border-red-800 ml-1">
-                                                                {{ ucfirst(str_replace('_', ' ', $key)) }} updated
-                                                            </span>
-                                                        @endforeach
-                                                    </div>
+                                                @php
+                                                    $isCorrection = false;
+                                                    // Check if this update was specifically our expiry date modification
+                                                    if (isset($log->details['note']) && $log->details['note'] === 'Expiry date modified') {
+                                                        $old = \Carbon\Carbon::parse($log->details['old_expiry']);
+                                                        $new = \Carbon\Carbon::parse($log->details['new_expiry']);
+                                                        
+                                                        // If the new date is earlier than the old date, it's a correction
+                                                        if ($new->lessThan($old)) {
+                                                            $isCorrection = true;
+                                                        }
+                                                    }
+                                                @endphp
+
+                                                @if($isCorrection)
+                                                    <x-heroicon-m-clock class="w-5 h-5 text-amber-500" />
+                                                    <span class="text-gray-500 dark:text-gray-400">Membership Changed:</span>
+                                                    <a href="{{ \App\Filament\Resources\MemberResource::getUrl('view', ['record' => $log->loggable_id ?? 1]) }}" class="text-primary-600 dark:text-primary-500 hover:underline font-semibold">
+                                                        {{ $log->details['member_name'] ?? $log->loggable?->name ?? 'Unknown' }}
+                                                    </a>
+                                                    <span class="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded font-medium border border-amber-200 dark:border-amber-800 ml-2">
+                                                        Until {{ \Carbon\Carbon::parse($log->details['new_expiry'])->format('M j, Y') }}
+                                                    </span>
+                                                @else
+                                                    <x-heroicon-m-pencil-square class="w-5 h-5 text-blue-400" />
+                                                    <span class="text-gray-500 dark:text-gray-400">Member Profile Updated:</span>
+                                                    <a href="{{ \App\Filament\Resources\MemberResource::getUrl('view', ['record' => $log->loggable_id ?? 1]) }}" class="text-primary-600 dark:text-primary-500 hover:underline font-semibold">
+                                                        {{ $log->details['member_name'] ?? $log->loggable?->name ?? 'Unknown' }}
+                                                    </a>
+                                                    @if(isset($log->details['changes']))
+                                                        <div class="flex gap-2 ml-2">
+                                                            @foreach($log->details['changes'] as $key => $changeData)
+                                                                <span class="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded font-medium border border-amber-200 dark:border-amber-800 ml-2">
+                                                                    {{ ucfirst(str_replace('_', ' ', $key)) }} updated
+                                                                </span>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
                                                 @endif
                                                 @break
 

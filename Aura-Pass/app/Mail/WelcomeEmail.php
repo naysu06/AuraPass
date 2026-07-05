@@ -49,15 +49,24 @@ class WelcomeEmail extends Mailable implements ShouldQueue
     /**
      * Get the attachments for the message.
      */
+/**
+     * Get the attachments for the message.
+     */
     public function attachments(): array
     {
+        // 1. Define the absolute path to your gym's logo.
+        // Ensure you have a logo file placed at public/images/logo.png
+        $logoPath = public_path('images/logo.png');
+
         // Generate the PNG as a raw binary string
         $qrCode = (string) QrCode::format('png')
-                        ->size(400)
-                        ->backgroundColor(255, 255, 255) // White background
-                        ->color(0, 0, 0) // Black foreground (optional, but explicit)
-                        ->margin(2) // Add margin for better scanning
-                        ->generate($this->member->unique_id);
+            ->size(400)
+            ->errorCorrection('H') // 2. CRITICAL: Sets damage tolerance to 30%
+            ->merge($logoPath, 0.2, true) // 3. NEW: Injects logo at 20% size (true = absolute path)
+            ->backgroundColor(255, 255, 255) 
+            ->color(0, 0, 0) 
+            ->margin(2) 
+            ->generate($this->member->unique_id);
 
         // Attach the binary string data as a .png file
         return [

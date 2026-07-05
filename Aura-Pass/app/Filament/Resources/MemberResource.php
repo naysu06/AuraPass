@@ -28,6 +28,7 @@ use Illuminate\Support\HtmlString;
 // Import Layout Components
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\Group;
+use Filament\Infolists\Components\ViewEntry;
 
 class MemberResource extends Resource
 {
@@ -52,7 +53,9 @@ class MemberResource extends Resource
                     ->required()
                     ->default('regular'),
 
-                Forms\Components\DatePicker::make('membership_expiry_date')->required(),
+                Forms\Components\DatePicker::make('membership_expiry_date')
+                    ->required()
+                    ->minDate(now()->addDay()), // Disables today and all past dates
                 
                 Forms\Components\Section::make('Photo Identification')
                     ->schema([
@@ -240,16 +243,10 @@ class MemberResource extends Resource
 
                         // Column 3: QR Code Group
                         Group::make([
-                            ImageEntry::make('qr_code')
+                            // CHANGED: Use ViewEntry to completely bypass Blade Regex Limits
+                            ViewEntry::make('qr_code')
                                 ->label('Member QR Code')
-                                ->height(250) 
-                                ->default(function ($record) {
-                                    $qrCode = QrCode::format('svg')
-                                                    ->size(250)
-                                                    ->generate($record->unique_id);
-                                    return 'data:image/svg+xml;base64,' . base64_encode($qrCode);
-                                })
-                                ->extraImgAttributes(['class' => 'mx-auto']),
+                                ->view('filament.infolists.components.qr-code'),
 
                             // Place Action BELOW the image
                             Actions::make([
@@ -260,10 +257,14 @@ class MemberResource extends Resource
                                     ->tooltip('Download High-Res PNG')
                                     ->action(function ($record) {
                                         return response()->streamDownload(function () use ($record) {
+                                            $logoPath = public_path('images/logo.png');
+                                            
                                             echo QrCode::format('png')
-                                                    ->size(500)
-                                                    ->margin(2)
-                                                    ->generate($record->unique_id);
+                                                        ->size(500)
+                                                        ->errorCorrection('H')
+                                                        ->merge($logoPath, 0.2, true)
+                                                        ->margin(2)
+                                                        ->generate($record->unique_id);
                                         }, $record->name . '-qr.png');
                                     }),
                             ])->alignment(Alignment::Center),

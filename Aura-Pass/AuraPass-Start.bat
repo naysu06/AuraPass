@@ -25,7 +25,7 @@ SET "MYSQL_INI=%LARAGON_DIR%\bin\mysql\mysql-8.4.3-winx64\my.ini"
 SET "PHP_BIN=%LARAGON_DIR%\bin\php\php-8.3.26-Win32-vs16-x64\php.exe" 
 
 :: Note: Change to http://localhost:8000 if not using a custom vhost
-SET "APP_URL=https://aurapass.test"
+SET "APP_URL=http://localhost:8000"
 SET "LARAVEL_DIR=%ROOT%"
 
 :: ── 1. START DATABASES & SERVERS (Background) ───────────

@@ -32,7 +32,7 @@ class MemberObserver
      */
     public function updated(Member $member): void
     {
-        // 1. Detect Membership Renewal Time Jumps
+        // 1. Detect ALL Membership Expiry Date Changes
         if ($member->wasChanged('membership_expiry_date')) {
             $oldExpiry = $member->getOriginal('membership_expiry_date');
             $newExpiry = $member->membership_expiry_date;
@@ -41,24 +41,29 @@ class MemberObserver
                 $oldDate = Carbon::parse($oldExpiry);
                 $newDate = Carbon::parse($newExpiry);
 
-                if ($newDate->greaterThan($oldDate)) {
-                    $this->auditLogService->logActivity(
-                        'member.renewed',
-                        $member,
-                        [
-                            'member_name' => $member->name,
-                            'old_expiry'  => $oldDate->format('Y-m-d'),
-                            'new_expiry'  => $newDate->format('Y-m-d'),
-                        ]
-                    );
-                    return;
-                }
+                // If date moves forward, it's a renewal. If backward, it's a correction.
+                $activityType = $newDate->greaterThan($oldDate) ? 'member.renewed' : 'member.updated';
+
+                $this->auditLogService->logActivity(
+                    $activityType,
+                    $member,
+                    [
+                        'member_name' => $member->name,
+                        'note'        => 'Expiry date modified', // Adds context for backward changes
+                        'old_expiry'  => $oldDate->format('Y-m-d'),
+                        'new_expiry'  => $newDate->format('Y-m-d'),
+                    ]
+                );
             }
+            
+            // We removed the 'return;' here so that if an admin changes the date AND 
+            // updates the member's profile info simultaneously, the script continues to block 2!
         }
 
         // 2. Track Generic Member Parameter Changes
         $changes = [];
         foreach ($member->getChanges() as $attribute => $newValue) {
+            // Exclude the expiry date here so we don't get double logs from Block 1
             if (!in_array($attribute, ['updated_at', 'membership_expiry_date'])) {
                 $changes[$attribute] = [
                     'old' => $member->getOriginal($attribute),

@@ -21,10 +21,23 @@ class AuditLogService
             $model = null;
         }
 
+        // --- IMMUTABLE OPERATOR STAMP ---
+        // Grab the currently authenticated admin
+        $activeAdmin = Auth::user();
+
+        // Force the operator's name into the JSON payload as a permanent failsafe.
+        // We only apply this if an observer hasn't already manually set it.
+        if (!isset($details['operator_name'])) {
+            $details['operator_name'] = $activeAdmin 
+                ? ($activeAdmin->username ?? $activeAdmin->name ?? 'System') 
+                : 'System';
+        }
+        // --------------------------------
+
         $logData = [
             'user_id'    => $forceUserId ?? Auth::id(),
             'activity'   => $activity,
-            'details'    => $details,
+            'details'    => $details, // The safely stamped array is now passed here
             'ip_address' => $isConsole ? '127.0.0.1' : Request::ip(),
             'user_agent' => $isConsole ? 'Windows CLI (System Event)' : Request::header('user-agent'),
         ];

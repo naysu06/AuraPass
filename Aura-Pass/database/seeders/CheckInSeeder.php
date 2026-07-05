@@ -22,9 +22,11 @@ use Illuminate\Support\Facades\Schema;
 class CheckInSeeder extends Seeder
 {
     // ─── Tuneable Constants ───────────────────────────────────────────────────
-    private const SEED_MONTHS   = 18;   // months of historical member data
-    private const CHECKIN_DAYS  = 120;  // days of actual check-in logs
-    private const BATCH_SIZE    = 750;
+    private const SEED_MONTHS   = 6;    // Scaled down from 18
+    private const CHECKIN_DAYS  = 30;   // Scaled down from 120
+    private const MAX_CHECKINS  = 100;  // NEW: Exact limit for check-ins
+    private const MAX_MEMBERS   = 15;   // NEW: Exact limit for random members
+    private const BATCH_SIZE    = 100;
 
     // Weighted hourly traffic profile (0–23). Reflects Baguio cold-morning culture.
     private const HOUR_WEIGHTS = [
@@ -41,18 +43,18 @@ class CheckInSeeder extends Seeder
         Schema::disableForeignKeyConstraints();
         CheckIn::truncate();
         Member::truncate();
-        AuditLog::truncate(); // <-- ADDED: Wipe the audit logs clean
+        AuditLog::truncate(); 
         Schema::enableForeignKeyConstraints();
 
-        $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts (Limited to ~150)...');
+        $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts (Limited to ' . self::MAX_MEMBERS . ')...');
         $members = $this->generateMembers();
 
-        $this->command->info("✅  Created {$members->count()} members across " . self::SEED_MONTHS . " months.");
-        $this->command->info('📅  [2/3] Simulating individual daily check-in behavior (' . self::CHECKIN_DAYS . ' days)...');
+        $this->command->info("✅  Created {$members->count()} members.");
+        $this->command->info('📅  [2/3] Simulating exactly ' . self::MAX_CHECKINS . ' recent check-ins...');
 
         $totalInserted = $this->simulateCheckIns($members);
 
-        $this->command->info("✅  [3/3] Seeded {$totalInserted} behaviorally-accurate check-ins and audit logs. Analytics ready!");
+        $this->command->info("✅  [3/3] Seeded {$totalInserted} check-ins and corresponding audit logs. Analytics ready!");
     }
 
     // =========================================================================
@@ -62,7 +64,7 @@ class CheckInSeeder extends Seeder
     private function generateMembers(): \Illuminate\Support\Collection
     {
         $members = collect();
-        $auditBuffer = []; // Buffer for member creation logs
+        $auditBuffer = []; 
 
         for ($m = self::SEED_MONTHS; $m >= 0; $m--) {
             $targetMonth = now()->subMonthsNoOverflow($m);
@@ -70,12 +72,12 @@ class CheckInSeeder extends Seeder
 
             $cohort = $this->buildMonthlyCohort($monthNum, $targetMonth);
             foreach ($cohort as $memberData) {
-                if ($members->count() >= 145) break;
+                // APPLIED LIMIT: Stops generating once we hit the cap
+                if ($members->count() >= self::MAX_MEMBERS) break 2;
                 
                 $newMember = Member::factory()->create($memberData);
                 $members->push($newMember);
 
-                // Add audit log for member creation
                 $auditBuffer[] = $this->buildAuditLogRow('member.created', $newMember, $newMember->created_at);
             }
         }
@@ -102,7 +104,6 @@ class CheckInSeeder extends Seeder
             $auditBuffer[] = $this->buildAuditLogRow('member.created', $newMember, $joinDate);
         }
 
-        // Insert all member creation logs at once
         AuditLog::insert($auditBuffer);
 
         return $members;
@@ -146,7 +147,8 @@ class CheckInSeeder extends Seeder
         $auditBuffer   = [];
         $totalInserted = 0;
 
-        for ($d = self::CHECKIN_DAYS; $d >= 0; $d--) {
+        // CHANGED: Loop counts UP from 0 to ensure the 100 check-ins generated are the most recent ones
+        for ($d = 0; $d <= self::CHECKIN_DAYS; $d++) {
             $date      = Carbon::now()->subDays($d)->startOfDay();
             $dayOfWeek = (int) $date->dayOfWeek;
             $monthNum  = (int) $date->month;
@@ -156,6 +158,11 @@ class CheckInSeeder extends Seeder
             );
 
             foreach ($activeMembers as $member) {
+                // APPLIED LIMIT: Hard stop when we hit 100
+                if ($totalInserted >= self::MAX_CHECKINS) {
+                    break 2; // Breaks entirely out of both the member loop and the days loop
+                }
+
                 $daysSinceJoined = (int) $date->diffInDays($member->created_at);
                 $prob = $this->calcAttendanceProbability($member->membership_type, $daysSinceJoined, $dayOfWeek, $monthNum);
 
@@ -182,6 +189,10 @@ class CheckInSeeder extends Seeder
 
                 // ── Rare double-session ─────────────────────────────────────
                 if ($member->membership_type === 'regular' && rand(1, 100) <= 3) {
+                    
+                    // Enforce the limit on double sessions too
+                    if ($totalInserted >= self::MAX_CHECKINS) break 2;
+
                     $secondHour = ($hour < 12) ? rand(16, 18) : rand(6, 8);
                     $secondIn   = $date->copy()->setTime($secondHour, rand(0, 59), rand(0, 59));
                     
@@ -202,7 +213,7 @@ class CheckInSeeder extends Seeder
                 // Batch insert to protect memory
                 if (count($checkInBuffer) >= self::BATCH_SIZE) {
                     CheckIn::insert($checkInBuffer);
-                    AuditLog::insert($auditBuffer); // Insert audits alongside check-ins
+                    AuditLog::insert($auditBuffer); 
                     $checkInBuffer = [];
                     $auditBuffer   = [];
                 }
@@ -231,17 +242,13 @@ class CheckInSeeder extends Seeder
         ];
     }
 
-    /**
-     * Helper to structure the audit log cleanly for mass insertion.
-     * Uses json_encode because Eloquent doesn't cast arrays during mass insert().
-     */
     private function buildAuditLogRow(string $activity, Member $member, Carbon $timestamp): array
     {
         return [
-            'user_id'       => null, // Null indicates a "System" event on your UI
+            'user_id'       => null, 
             'activity'      => $activity,
             'loggable_id'   => $member->id,
-            'loggable_type' => get_class($member), // Usually 'App\Models\Member'
+            'loggable_type' => get_class($member), 
             'details'       => json_encode(['member_name' => $member->name]),
             'ip_address'    => '127.0.0.1',
             'user_agent'    => 'AuraPass Background Seeder',
@@ -249,8 +256,6 @@ class CheckInSeeder extends Seeder
             'updated_at'    => $timestamp->copy(),
         ];
     }
-
-    // ... [The rest of your calcAttendanceProbability, studentProbability, getWeightedHour, etc. methods remain exactly the same]
 
     private function calcAttendanceProbability(string $membershipType, int $daysSinceJoined, int $dayOfWeek, int $month): float
     {
