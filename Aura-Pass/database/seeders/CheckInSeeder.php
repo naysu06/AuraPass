@@ -46,15 +46,29 @@ class CheckInSeeder extends Seeder
         AuditLog::truncate(); 
         Schema::enableForeignKeyConstraints();
 
-        $this->command->info('🏋️  [1/3] Generating Baguio-realistic member cohorts (Limited to ' . self::MAX_MEMBERS . ')...');
+        $this->command->info('🏋️  [1/4] Generating Baguio-realistic member cohorts (Limited to ' . self::MAX_MEMBERS . ')...');
         $members = $this->generateMembers();
 
         $this->command->info("✅  Created {$members->count()} members.");
-        $this->command->info('📅  [2/3] Simulating exactly ' . self::MAX_CHECKINS . ' recent check-ins...');
+        $this->command->info('📅  [2/4] Simulating exactly ' . self::MAX_CHECKINS . ' recent check-ins...');
 
         $totalInserted = $this->simulateCheckIns($members);
 
-        $this->command->info("✅  [3/3] Seeded {$totalInserted} check-ins and corresponding audit logs. Analytics ready!");
+        $this->command->info("✅  Seeded {$totalInserted} check-ins and corresponding audit logs.");
+
+        $this->command->info('🎯  [3/4] Seeding dedicated KPI Showcase Cohort (Custom Report demo data)...');
+        [$showcaseStart, $showcaseEnd] = $this->generateKpiShowcaseCohort();
+
+        $this->command->info('✅  [4/4] Analytics ready!');
+        $this->command->newLine();
+        $this->command->info('  ┌─────────────────────────────────────────────────────────────────┐');
+        $this->command->info('  │  KPI SHOWCASE — Custom Report Demo                                 ');
+        $this->command->info('  │  In the "Export KPI" action, pick Report Type: Custom Date Range   ');
+        $this->command->info('  │    Start Date : ' . $showcaseStart->format('Y-m-d'));
+        $this->command->info('  │    End Date   : ' . $showcaseEnd->format('Y-m-d'));
+        $this->command->info('  │  Expect: 20 signups (8 promo / 7 discount / 5 regular),             ');
+        $this->command->info('  │          ~65% Activation Rate, ~50% Retention Rate.                 ');
+        $this->command->info('  └─────────────────────────────────────────────────────────────────┘');
     }
 
     // =========================================================================
@@ -135,6 +149,120 @@ class CheckInSeeder extends Seeder
         }
 
         return $cohort;
+    }
+
+    // =========================================================================
+    // KPI SHOWCASE COHORT (Custom Report demo data)
+    // =========================================================================
+
+    /**
+     * Seeds a fixed, deterministic 20-member cohort inside a specific past
+     * date window, purpose-built to exercise the Custom Report's activation
+     * rate / retention rate / plan-mix metrics with numbers that are always
+     * the same, no matter when the seeder is run — good for demos and for
+     * regression-checking the report's math.
+     *
+     * Totals by design:
+     *   - Plan mix:   8 promo / 7 discount / 5 regular      (20 total)
+     *   - Retention:  10 still active / 5 naturally expired / 5 cancelled
+     *                 early via soft-delete                  (20 total)
+     *   - Activation: 13 checked in at least once / 7 never showed up
+     *
+     * The 5 "cancelled early" members are removed via Eloquent's delete()
+     * (not truncate), so the app's real MemberObserver fires normally —
+     * this also doubles as a live check that the PII-scrubbing /
+     * event-snapshot audit fix behaves correctly on soft-delete.
+     *
+     * Returns [windowStart, windowEnd] so run() can print the exact dates
+     * an admin should select in the Custom Report form.
+     */
+    private function generateKpiShowcaseCohort(): array
+    {
+        $windowStart = Carbon::now()->subDays(45)->startOfDay(); // older boundary
+        $windowEnd   = Carbon::now()->subDays(31)->startOfDay(); // more recent boundary
+
+        // [membership_type, retention_status, activated]
+        $spec = [
+            // -- Still active (10) --------------------------------------------
+            ['promo',    'still_active', true],
+            ['promo',    'still_active', true],
+            ['promo',    'still_active', false], // "ghost" member: paying, never attended
+            ['discount', 'still_active', true],
+            ['discount', 'still_active', true],
+            ['discount', 'still_active', false], // another ghost member
+            ['regular',  'still_active', true],
+            ['regular',  'still_active', true],
+            ['promo',    'still_active', true],
+            ['discount', 'still_active', true],
+            // -- Naturally expired, not deleted (5) ----------------------------
+            ['promo',    'expired_not_deleted', true],
+            ['promo',    'expired_not_deleted', false],
+            ['discount', 'expired_not_deleted', true],
+            ['discount', 'expired_not_deleted', false],
+            ['regular',  'expired_not_deleted', true],
+            // -- Cancelled early / soft-deleted (5) ----------------------------
+            ['promo',    'soft_deleted', true],  // classic churn: tried it, then quit
+            ['promo',    'soft_deleted', false],
+            ['discount', 'soft_deleted', false],
+            ['regular',  'soft_deleted', true],
+            ['regular',  'soft_deleted', false],
+        ];
+
+        $auditBuffer = [];
+
+        foreach ($spec as $i => [$type, $status, $activated]) {
+            // Join date somewhere inside the window (always within [windowStart, windowEnd]).
+            $joinDate = $windowStart->copy()->addDays(rand(0, 13))->setTime(rand(9, 18), rand(0, 59));
+
+            $expiryDate = match ($status) {
+                'still_active'        => Carbon::now()->addDays(rand(15, 120)),
+                'expired_not_deleted' => Carbon::now()->subDays(rand(1, 25)),
+                'soft_deleted'        => Carbon::now()->addDays(rand(10, 60)), // cancelled while still technically valid
+            };
+
+            $member = Member::factory()->create([
+                'name'                   => 'Showcase — ' . ucfirst(str_replace('_', ' ', $status)) . ' #' . ($i + 1),
+                'created_at'             => $joinDate,
+                'membership_expiry_date' => $expiryDate,
+                'membership_type'        => $type,
+            ]);
+
+            $auditBuffer[] = $this->buildAuditLogRow('member.created', $member, $joinDate);
+
+            if ($activated) {
+                // 1–2 visits shortly after signing up — enough to count as "activated"
+                // and to also feed the period's Total Check-ins / Avg Duration metrics.
+                $visits = rand(1, 2);
+                for ($v = 0; $v < $visits; $v++) {
+                    $checkInTime = $joinDate->copy()->addDays(rand(1, 6))->setTime(rand(6, 20), rand(0, 59));
+                    if ($checkInTime->isFuture()) continue;
+
+                    $checkOutTime = $checkInTime->copy()->addMinutes(rand(35, 90));
+                    if ($checkOutTime->isFuture()) $checkOutTime = null;
+
+                    CheckIn::insert($this->buildCheckInRow($member->id, $checkInTime, $checkOutTime));
+                    $auditBuffer[] = $this->buildAuditLogRow('member.checked_in', $member, $checkInTime);
+                    if ($checkOutTime) {
+                        $auditBuffer[] = $this->buildAuditLogRow('member.checked_out', $member, $checkOutTime);
+                    }
+                }
+            }
+
+            // Cancelled-early members are soft-deleted via Eloquent (not truncate) so
+            // MemberObserver::deleting() fires for real — exercising the PII-scrubbing
+            // / event-snapshot fix the audit trail already depends on. NOTE: if that
+            // observer dispatches a queued listener (ShouldQueue) to write the
+            // "member.deleted" audit row, it won't execute during `db:seed` unless
+            // QUEUE_CONNECTION=sync — run with that env var set (or a queue worker
+            // active) if you want to see the deletion entry in the Live Log Feed too.
+            if ($status === 'soft_deleted') {
+                $member->delete();
+            }
+        }
+
+        AuditLog::insert($auditBuffer);
+
+        return [$windowStart, $windowEnd];
     }
 
     // =========================================================================

@@ -8,7 +8,7 @@ use Filament\Resources\Pages\Page;
 use Livewire\WithPagination;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
-use ZipArchive; // REQUIRED for bundling multiple CSVs
+use Filament\Forms\Get;
 
 class ViewAuditLog extends Page
 {
@@ -48,6 +48,7 @@ class ViewAuditLog extends Page
                 'member.checked_out',
                 'member.checked_in_manually',
                 'member.checked_out_manually',
+                'member.scan_failed',
                 'member.scan.failed',
             ]);
         } elseif ($this->filter === 'system') {
@@ -56,6 +57,7 @@ class ViewAuditLog extends Page
 
         if (!empty($this->search)) {
             $query->where(function ($q) {
+                // 1. Standard Text Search (Names, Actions, Usernames)
                 $q->where('activity', 'like', "%{$this->search}%")
                   ->orWhere('details->member_name', 'like', "%{$this->search}%")
                   ->orWhere('details->username', 'like', "%{$this->search}%")
@@ -65,6 +67,19 @@ class ViewAuditLog extends Page
                   ->orWhereHasMorph('loggable', [\App\Models\Member::class], function ($memberQuery) {
                       $memberQuery->withTrashed()->where('name', 'like', "%{$this->search}%");
                   });
+
+                // 2. The Smart Date Parser
+                // Only try to parse if the user typed at least one number
+                if (preg_match('/[0-9]/', $this->search)) {
+                    try {
+                        $parsedDate = \Carbon\Carbon::parse($this->search);
+                        // If Carbon successfully reads the date, add it to the search OR conditions
+                        $q->orWhereDate('created_at', $parsedDate);
+                    } catch (\Exception $e) {
+                        // If they typed something with numbers that isn't a date (like "Admin123"),
+                        // Carbon will fail silently and just use the text searches above!
+                    }
+                }
             });
         }
 
@@ -84,16 +99,26 @@ class ViewAuditLog extends Page
     {
         return [
             Action::make('exportCsv')
-                ->label('Export CSV') // Updated label
+                ->label('Export CSV') 
                 ->color('primary')
-                ->icon('heroicon-o-archive-box-arrow-down') // Updated icon to reflect a zip archive
+                ->icon('heroicon-o-document-arrow-down') 
                 ->form([
                     DatePicker::make('date_from')
                         ->label('Start Date')
-                        ->default(now()->startOfMonth()),
+                        ->default(now()->startOfMonth())
+                        ->live() 
+                        // Cannot be after the End Date, OR if End Date is empty, cannot be after Today
+                        ->maxDate(fn (Get $get) => $get('date_to') ?: now()),
+                        
                     DatePicker::make('date_to')
                         ->label('End Date')
-                        ->default(now()->endOfMonth()),
+                        // Changed default to Today, so it doesn't accidentally set to the 31st!
+                        ->default(now()) 
+                        ->live()
+                        // Cannot be before the Start Date
+                        ->minDate(fn (Get $get) => $get('date_from'))
+                        // HARD STOP: Cannot be a date in the future
+                        ->maxDate(now()),
                 ])
                 ->action(function (array $data) {
                     return $this->exportCsv($data['date_from'], $data['date_to']);
@@ -108,24 +133,18 @@ class ViewAuditLog extends Page
         if ($dateFrom) $query->whereDate('created_at', '>=', $dateFrom);
         if ($dateTo)   $query->whereDate('created_at', '<=', $dateTo);
 
-        // Group the logs by day directly from the database collection
-        $groupedLogs = $query->get()->groupBy(fn ($log) => $log->created_at->format('Y-m-d'));
+        // Just get the flat collection of logs, no grouping needed!
+        $logs = $query->get();
 
-        // Define a temporary zip file path
-        $zipFileName = 'aurapass_audit_logs_' . ($dateFrom ?? 'start') . '_to_' . ($dateTo ?? 'end') . '.zip';
-        $zipFilePath = sys_get_temp_dir() . '/' . $zipFileName;
+        $fileName = 'AuraPass_Audit_Log_' . ($dateFrom ?? 'start') . '_to_' . ($dateTo ?? 'end') . '.csv';
 
-        $zip = new ZipArchive();
-        if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new \Exception('Could not create ZIP file.');
-        }
-
-        // Generate a separate CSV file for each day
-        foreach ($groupedLogs as $date => $logs) {
-            $csvFile = fopen('php://temp', 'r+');
+        // Stream directly to the browser to bypass Windows file path issues
+        return response()->streamDownload(function () use ($logs) {
+            
+            $csvFile = fopen('php://output', 'w');
             fputs($csvFile, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
 
-            // Injecting empty spacer columns
+            // Injecting empty spacer columns for readability
             fputcsv($csvFile, [
                 'ID', ' ', 'Timestamp', ' ', 'Operator', ' ', 'Activity', ' ', 'Target Type', ' ', 'Target ID/Name', ' ', 'IP Address', 'User Agent',
             ]);
@@ -194,7 +213,6 @@ class ViewAuditLog extends Page
                     if (isset($log->details['changes']) && is_array($log->details['changes'])) {
                         $changeDescriptions = [];
                         foreach ($log->details['changes'] as $key => $changeData) {
-                            // If they just changed their password, hide the hashed string
                             if ($key === 'password') {
                                 $changeDescriptions[] = "Password Updated";
                                 continue;
@@ -245,19 +263,8 @@ class ViewAuditLog extends Page
                 ]);
             }
 
-            rewind($csvFile);
-            $csvContent = stream_get_contents($csvFile);
             fclose($csvFile);
-
-            $zip->addFromString("{$date}_audit_log.csv", $csvContent);
-        }
-
-        if ($groupedLogs->isEmpty()) {
-            $zip->addFromString('no_data.txt', 'No audit logs found for the selected date range.');
-        }
-
-        $zip->close();
-
-        return response()->download($zipFilePath)->deleteFileAfterSend(true);
+            
+        }, $fileName, ['Content-Type' => 'text/csv']);
     }
 }
