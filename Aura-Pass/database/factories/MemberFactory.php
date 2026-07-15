@@ -13,8 +13,7 @@ class MemberFactory extends Factory
             'name' => $this->faker->name(),
             'email' => $this->faker->unique()->safeEmail(),
             
-            // Generate a random unique ID (like your QR codes)
-            // e.g., "MEM-839201"
+            // Generate a random unique ID
             'unique_id' => 'MEM-' . strtoupper(Str::random(6)),
             
             // Set expiry date to sometime in the future (1 to 6 months from now)
