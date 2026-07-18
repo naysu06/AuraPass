@@ -19,3 +19,18 @@ Schedule::command('gym:remind-expiring')
 Schedule::command('gym:auto-checkout')
     ->everyMinute()
     ->timezone('Asia/Manila');
+
+// Run the Daily Report every night at 10:00 PM
+Schedule::command('aurapass:generate-reports daily')->dailyAt('22:30')
+    //->everyMinute()
+    ->timezone('Asia/Manila');
+
+// Run the Weekly Report every Monday morning at 6:00 AM
+Schedule::command('aurapass:generate-reports weekly')->weeklyOn(1, '06:00')
+    //->everyMinute()
+    ->timezone('Asia/Manila');
+
+// Run the Monthly Report on the 1st of every month at 6:00 AM
+Schedule::command('aurapass:generate-reports monthly')->monthlyOn(1, '06:00')
+    //->everyMinute()
+    ->timezone('Asia/Manila');
